@@ -247,7 +247,12 @@ function KetoApp() {
   const [carbLimit, setCarbLimit] = useState(50);
   const [calLimit, setCalLimit] = useState(2000);
   const [auth, setAuth] = useState(null); // {user, token}
-  const [authForm, setAuthForm] = useState({ user: "", pass: "" });
+  const [authForm, setAuthForm] = useState({ user: "", pass: "", email: "" });
+  const [authMode, setAuthMode] = useState("login"); // "login" | "forgot-user" | "forgot-pass" | "reset-pass"
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [resetCode, setResetCode] = useState("");
+  const [resetNewPass, setResetNewPass] = useState("");
+  const [attachEmailValue, setAttachEmailValue] = useState("");
   const [remember, setRemember] = useState(true);
   const [authMsg, setAuthMsg] = useState(null);
   const [authBusy, setAuthBusy] = useState(false);
@@ -599,7 +604,9 @@ function KetoApp() {
     if (authForm.user.trim().length < 2 || authForm.pass.length < 4) { setAuthMsg("שם משתמש (2+ תווים) וסיסמה (4+ תווים)"); return; }
     setAuthBusy(true);
     try {
-      const d = await api(mode === "register" ? "/auth/register" : "/auth/login", { user: authForm.user.trim(), pass: authForm.pass });
+      const payload = { user: authForm.user.trim(), pass: authForm.pass };
+      if (mode === "register") payload.email = authForm.email.trim();
+      const d = await api(mode === "register" ? "/auth/register" : "/auth/login", payload);
       const a = { user: d.user, token: d.token };
       setAuth(a);
       if (remember) await window.storage.set("ketome-auth", JSON.stringify(a)).catch(() => {});
@@ -630,6 +637,55 @@ function KetoApp() {
   const logout = async () => {
     setAuth(null); setAuthMsg(null);
     await window.storage.delete("ketome-auth").catch(() => {});
+
+     const doForgotUsername = async () => {
+    setAuthMsg(null);
+    if (!forgotEmail.trim()) { setAuthMsg("יש להזין כתובת אימייל"); return; }
+    setAuthBusy(true);
+    try {
+      await api("/auth/forgot-username", { email: forgotEmail.trim() });
+      setAuthMsg("✓ אם הכתובת רשומה במערכת, שם המשתמש נשלח אליה");
+      setAuthMode("login");
+    } catch (e) { setAuthMsg(e.message); }
+    finally { setAuthBusy(false); }
+  };
+
+  const doForgotPassword = async () => {
+    setAuthMsg(null);
+    if (!forgotEmail.trim()) { setAuthMsg("יש להזין כתובת אימייל"); return; }
+    setAuthBusy(true);
+    try {
+      await api("/auth/forgot-password", { email: forgotEmail.trim() });
+      setAuthMsg("✓ אם הכתובת רשומה במערכת, נשלח קוד איפוס — בדוק/י את תיבת הדואר");
+      setAuthMode("reset-pass");
+    } catch (e) { setAuthMsg(e.message); }
+    finally { setAuthBusy(false); }
+  };
+
+  const doResetPassword = async () => {
+    setAuthMsg(null);
+    if (!forgotEmail.trim() || !resetCode.trim() || resetNewPass.length < 4) { setAuthMsg("נדרשים אימייל, קוד וסיסמה חדשה (4+ תווים)"); return; }
+    setAuthBusy(true);
+    try {
+      await api("/auth/reset-password", { email: forgotEmail.trim(), code: resetCode.trim(), newPass: resetNewPass });
+      setAuthMsg("✓ הסיסמה אופסה — אפשר להתחבר עכשיו");
+      setAuthMode("login");
+      setResetCode(""); setResetNewPass(""); setForgotEmail("");
+    } catch (e) { setAuthMsg(e.message); }
+    finally { setAuthBusy(false); }
+  };
+
+  const attachEmail = async () => {
+    setAuthMsg(null);
+    if (!attachEmailValue.trim() || !attachEmailValue.includes("@")) { setAuthMsg("כתובת אימייל תקינה נדרשת"); return; }
+    setAuthBusy(true);
+    try {
+      await api("/auth/set-email", { token: auth.token, email: attachEmailValue.trim() });
+      setAuthMsg("✓ האימייל צורף לחשבון");
+      setAttachEmailValue("");
+    } catch (e) { setAuthMsg(e.message); }
+    finally { setAuthBusy(false); }
+  };
   };
 
   /* ─ תרופות: ממתינות להיום ─ */
@@ -1308,22 +1364,80 @@ function KetoApp() {
               )}
             </section>
 
-            <section style={{ marginTop: 28 }}>
+<section style={{ marginTop: 28 }}>
               <Label>חשבון אישי</Label>
               {!auth ? (
                 <div style={{ marginTop: 6 }}>
-                  <input placeholder="שם משתמש" autoComplete="username" value={authForm.user}
-                    onChange={(e) => setAuthForm({ ...authForm, user: e.target.value })} style={input()} />
-                  <input placeholder="סיסמה" type="password" autoComplete="current-password" value={authForm.pass}
-                    onChange={(e) => setAuthForm({ ...authForm, pass: e.target.value })} style={input()} />
-                  <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12, fontSize: 13.5, cursor: "pointer" }}>
-                    <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} style={{ accentColor: T.ink }} />
-                    זכור אותי במכשיר הזה
-                  </label>
-                  <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
-                    <button style={{ ...btn, flex: 1, padding: "10px 0" }} disabled={authBusy} onClick={() => doAuth("login")}>התחברות</button>
-                    <button style={{ ...btnGhost, flex: 1, padding: "10px 0" }} disabled={authBusy} onClick={() => doAuth("register")}>הרשמה</button>
-                  </div>
+                  {authMode === "login" && (
+                    <>
+                      <input placeholder="שם משתמש" autoComplete="username" value={authForm.user}
+                        onChange={(e) => setAuthForm({ ...authForm, user: e.target.value })} style={input()} />
+                      <input placeholder="סיסמה" type="password" autoComplete="current-password" value={authForm.pass}
+                        onChange={(e) => setAuthForm({ ...authForm, pass: e.target.value })} style={input()} />
+                      <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12, fontSize: 13.5, cursor: "pointer" }}>
+                        <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} style={{ accentColor: T.ink }} />
+                        זכור אותי במכשיר הזה
+                      </label>
+                      <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
+                        <button style={{ ...btn, flex: 1, padding: "10px 0" }} disabled={authBusy} onClick={() => doAuth("login")}>התחברות</button>
+                        <button style={{ ...btnGhost, flex: 1, padding: "10px 0" }} disabled={authBusy} onClick={() => setAuthMode("register")}>הרשמה</button>
+                      </div>
+                      <div style={{ display: "flex", gap: 16, marginTop: 14, fontSize: 12.5 }}>
+                        <button style={{ background: "none", border: "none", color: T.muted, cursor: "pointer", padding: 0, textDecoration: "underline" }} onClick={() => { setAuthMode("forgot-user"); setAuthMsg(null); }}>שכחתי שם משתמש</button>
+                        <button style={{ background: "none", border: "none", color: T.muted, cursor: "pointer", padding: 0, textDecoration: "underline" }} onClick={() => { setAuthMode("forgot-pass"); setAuthMsg(null); }}>שכחתי סיסמה</button>
+                      </div>
+                    </>
+                  )}
+
+                  {authMode === "register" && (
+                    <>
+                      <input placeholder="שם משתמש" autoComplete="username" value={authForm.user}
+                        onChange={(e) => setAuthForm({ ...authForm, user: e.target.value })} style={input()} />
+                      <input placeholder="אימייל" type="email" autoComplete="email" value={authForm.email}
+                        onChange={(e) => setAuthForm({ ...authForm, email: e.target.value })} style={input()} />
+                      <input placeholder="סיסמה" type="password" autoComplete="new-password" value={authForm.pass}
+                        onChange={(e) => setAuthForm({ ...authForm, pass: e.target.value })} style={input()} />
+                      <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
+                        <button style={{ ...btn, flex: 1, padding: "10px 0" }} disabled={authBusy} onClick={() => doAuth("register")}>הרשמה</button>
+                        <button style={{ background: "none", border: "none", color: T.muted, fontSize: 13.5, cursor: "pointer" }} onClick={() => setAuthMode("login")}>חזרה להתחברות</button>
+                      </div>
+                    </>
+                  )}
+
+                  {authMode === "forgot-user" && (
+                    <>
+                      <div style={{ fontSize: 13.5, color: T.muted, marginBottom: 8 }}>נזין את האימייל הרשום — נשלח אליו את שם המשתמש</div>
+                      <input placeholder="אימייל" type="email" value={forgotEmail} onChange={(e) => setForgotEmail(e.target.value)} style={input()} />
+                      <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
+                        <button style={{ ...btn, flex: 1, padding: "10px 0" }} disabled={authBusy} onClick={doForgotUsername}>שליחה</button>
+                        <button style={{ background: "none", border: "none", color: T.muted, fontSize: 13.5, cursor: "pointer" }} onClick={() => setAuthMode("login")}>ביטול</button>
+                      </div>
+                    </>
+                  )}
+
+                  {authMode === "forgot-pass" && (
+                    <>
+                      <div style={{ fontSize: 13.5, color: T.muted, marginBottom: 8 }}>נזין את האימייל הרשום — נשלח קוד לאיפוס הסיסמה</div>
+                      <input placeholder="אימייל" type="email" value={forgotEmail} onChange={(e) => setForgotEmail(e.target.value)} style={input()} />
+                      <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
+                        <button style={{ ...btn, flex: 1, padding: "10px 0" }} disabled={authBusy} onClick={doForgotPassword}>שליחת קוד</button>
+                        <button style={{ background: "none", border: "none", color: T.muted, fontSize: 13.5, cursor: "pointer" }} onClick={() => setAuthMode("login")}>ביטול</button>
+                      </div>
+                    </>
+                  )}
+
+                  {authMode === "reset-pass" && (
+                    <>
+                      <div style={{ fontSize: 13.5, color: T.muted, marginBottom: 8 }}>הזן/י את הקוד שנשלח לאימייל, וסיסמה חדשה</div>
+                      <input placeholder="אימייל" type="email" value={forgotEmail} onChange={(e) => setForgotEmail(e.target.value)} style={input()} />
+                      <input placeholder="קוד בן 6 ספרות" inputMode="numeric" value={resetCode} onChange={(e) => setResetCode(e.target.value)} style={input()} />
+                      <input placeholder="סיסמה חדשה" type="password" value={resetNewPass} onChange={(e) => setResetNewPass(e.target.value)} style={input()} />
+                      <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
+                        <button style={{ ...btn, flex: 1, padding: "10px 0" }} disabled={authBusy} onClick={doResetPassword}>איפוס סיסמה</button>
+                        <button style={{ background: "none", border: "none", color: T.muted, fontSize: 13.5, cursor: "pointer" }} onClick={() => setAuthMode("login")}>ביטול</button>
+                      </div>
+                    </>
+                  )}
                 </div>
               ) : (
                 <div style={{ marginTop: 6 }}>
@@ -1333,6 +1447,17 @@ function KetoApp() {
                     <button style={{ ...btnGhost, flex: 1, padding: "9px 0", fontSize: 13.5 }} disabled={authBusy} onClick={cloudLoad}>⬇ טעינה מהענן</button>
                   </div>
                   <button style={{ background: "none", border: "none", color: T.muted, fontSize: 13, cursor: "pointer", marginTop: 10, padding: 0 }} onClick={logout}>התנתקות</button>
+
+                  <div style={{ marginTop: 18, padding: "12px 0", borderTop: `1px solid ${T.hair}` }}>
+                    <div style={{ fontSize: 13, color: T.muted, marginBottom: 8 }}>
+                      לא רשום אימייל לחשבון זה — נדרש לשחזור סיסמה/שם משתמש עתידי:
+                    </div>
+                    <div style={{ display: "flex", gap: 10 }}>
+                      <input placeholder="הוסף אימייל לחשבון" type="email" value={attachEmailValue}
+                        onChange={(e) => setAttachEmailValue(e.target.value)} style={input({ flex: 1 })} />
+                      <button style={{ ...btnGhost, padding: "8px 18px", fontSize: 13 }} disabled={authBusy} onClick={attachEmail}>שמירה</button>
+                    </div>
+                  </div>
                 </div>
               )}
               {authMsg && (
