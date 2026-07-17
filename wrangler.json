@@ -1,5 +1,11 @@
 {
   "name": "ketome",
   "main": "worker/ketome-worker.js",
-  "compatibility_date": "2026-07-17"
+  "compatibility_date": "2026-07-17",
+  "kv_namespaces": [
+    {
+      "binding": "CACHE",
+      "id": "83f322904e2344b5a8aa3359533c9fee"
+    }
+  ]
 }
