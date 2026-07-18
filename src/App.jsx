@@ -24,7 +24,7 @@ const DARK_THEME = { paper: "#17181B", ink: "#F2F1ED", muted: "#9A9A95", hair: "
 /* T הוא משתנה מודולרי הניתן לשינוי — מתעדכן בתחילת כל רינדור של KetoApp לפי ערכת הנושא הנבחרת,
    כך שרכיבי עזר ברמת המודול (Ruler, Big, Label, Metric) תמיד רואים את הצבעים העדכניים */
 let T = LIGHT_THEME;
-const APP_VERSION = "1.5.0";
+const APP_VERSION = "1.5.1";
 
 /* כתובת השרת מוגדרת פעם אחת כאן ע"י המפתח (Cloudflare Worker) — לא ע"י המשתמש.
    כשריקה: הרשמה/סנכרון ענן מנוטרלים, וניתוח AI עובד ישירות (בסביבת התצוגה). */
@@ -839,7 +839,8 @@ function KetoApp() {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@300;400;500&family=Assistant:wght@400;600;700&display=swap');
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-        html, body { margin: 0; background: ${themeMode === "dark" ? "#0E0F11" : "#F1F0EC"}; }
+        html, body { margin: 0; background: ${themeMode === "dark" ? "#0E0F11" : "#F1F0EC"}; color-scheme: ${themeMode === "dark" ? "dark" : "light"}; }
+        :root { color-scheme: ${themeMode === "dark" ? "dark" : "light"}; }
         input:focus { border-bottom-color: ${T.ink} !important; }
         button { font-family: 'Assistant', sans-serif; }
         @keyframes pulse { 0%,100% { opacity: .35 } 50% { opacity: 1 } }
