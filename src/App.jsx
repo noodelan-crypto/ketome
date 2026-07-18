@@ -20,7 +20,7 @@ if (typeof window !== "undefined" && !window.storage) {
 
 /* ═══ KetoMe · v3.2.0 · עיצוב מינימליסטי ═══ */
 const T = { paper: "#FBFBF9", ink: "#161613", muted: "#8B8A83", hair: "#E7E5DF", accent: "#0F6B5C", warn: "#B4552D", mid: "#C99A2E" };
-const APP_VERSION = "1.2.2";
+const APP_VERSION = "1.3.1";
 
 /* כתובת השרת מוגדרת פעם אחת כאן ע"י המפתח (Cloudflare Worker) — לא ע"י המשתמש.
    כשריקה: הרשמה/סנכרון ענן מנוטרלים, וניתוח AI עובד ישירות (בסביבת התצוגה). */
@@ -248,7 +248,7 @@ function KetoApp() {
   const [calLimit, setCalLimit] = useState(2000);
   const [auth, setAuth] = useState(null); // {user, token}
   const [authForm, setAuthForm] = useState({ user: "", pass: "", email: "" });
-  const [authMode, setAuthMode] = useState("login"); // "login" | "forgot-user" | "forgot-pass" | "reset-pass"
+  const [authMode, setAuthMode] = useState("login"); // "login" | "register" | "forgot-user" | "forgot-pass" | "reset-pass"
   const [forgotEmail, setForgotEmail] = useState("");
   const [resetCode, setResetCode] = useState("");
   const [resetNewPass, setResetNewPass] = useState("");
@@ -339,6 +339,19 @@ function KetoApp() {
     }, 500);
     return () => clearTimeout(id);
   }, [loaded, profile, carbLimit, calLimit, weights, measurements, meals, meds, libreLogs]);
+
+  /* ─ גיבוי אוטומטי לענן — אם מחוברים, כל שינוי מגובה ברקע (לא רק בלחיצה על הכפתור) ─ */
+  useEffect(() => {
+    if (!loaded || !auth || !SERVER_URL) return;
+    const id = setTimeout(() => {
+      fetch(SERVER_URL.replace(/\/$/, "") + "/data/save", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: auth.token, data: appData() }),
+      }).catch(() => {}); // כשל שקט — הגיבוי הידני עדיין זמין כגיבוי
+    }, 2000);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded, auth, profile, carbLimit, calLimit, weights, measurements, meals, meds, libreLogs]);
 
   /* ─ נגזרות ─ */
   const todayMeals = useMemo(() => meals.filter((m) => dayKey(m.ts) === todayKey), [meals]);
@@ -576,7 +589,7 @@ function KetoApp() {
     window.open("https://wa.me/?text=" + encodeURIComponent(buildReport()), "_blank");
   };
 
-  /* ─ חשבון אישי: הרשמה / התחברות / סנכרון ענן ─ */
+  /* ─ חשבון אישי: הרשמה / התחברות / סנכרון ענן / שחזור ─ */
   const api = (path, payload) =>
     fetch(SERVER_URL.replace(/\/$/, "") + path, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
@@ -587,21 +600,36 @@ function KetoApp() {
     });
 
   const appData = () => ({ profile, carbLimit, calLimit, weights, measurements, meds, libreLogs, meals: meals.map(({ thumb, ...m }) => m) });
+
+  /* מיזוג במקום דריסה: כל רשומה (לפי id, או ts כשאין id) משתי הרשימות נשמרת —
+     כך התחברות ממכשיר אחר לעולם לא "מוחקת" נתונים שנוספו במכשיר הזה ולא הספיקו להתגבות */
+  const mergeByKey = (localArr, cloudArr, keyFn) => {
+    const map = new Map();
+    (cloudArr || []).forEach((item) => map.set(keyFn(item), item));
+    (localArr || []).forEach((item) => map.set(keyFn(item), item)); // המקומי גובר בהתנגשות מפתח
+    return [...map.values()].sort((a, b) => (a.ts ?? 0) - (b.ts ?? 0));
+  };
+
   const applyData = (d) => {
-    if (d.profile) setProfile(d.profile);
-    if (d.carbLimit) setCarbLimit(d.carbLimit);
-    if (d.calLimit) setCalLimit(d.calLimit);
-    if (d.weights) setWeights(d.weights);
-    if (d.measurements) setMeasurements(d.measurements);
-    if (d.meals) setMeals(d.meals);
-    if (d.meds) setMeds(d.meds);
-    if (d.libreLogs) setLibreLogs(d.libreLogs);
+    /* הגדרות סקלריות (פרופיל/יעדים): רק אם עדיין לא נטענו נתונים מקומיים משמעותיים */
+    const looksEmpty = meals.length === 0 && measurements.length === 0 && weights.length === 0 && meds.length === 0;
+    if (looksEmpty) {
+      if (d.profile) setProfile(d.profile);
+      if (d.carbLimit) setCarbLimit(d.carbLimit);
+      if (d.calLimit) setCalLimit(d.calLimit);
+    }
+    if (d.meals) setMeals((prev) => mergeByKey(prev.map(({ thumb, ...m }) => m), d.meals, (m) => m.id));
+    if (d.measurements) setMeasurements((prev) => mergeByKey(prev, d.measurements, (m) => m.id));
+    if (d.weights) setWeights((prev) => mergeByKey(prev, d.weights, (w) => w.ts));
+    if (d.meds) setMeds((prev) => mergeByKey(prev, d.meds, (m) => m.id));
+    if (d.libreLogs) setLibreLogs((prev) => mergeByKey(prev, d.libreLogs, (l) => l.ts));
   };
 
   const doAuth = async (mode) => {
     setAuthMsg(null);
     if (!SERVER_URL) { setAuthMsg("בסביבת תצוגה זו אין שרת מחובר — הנתונים נשמרים במכשיר בלבד. בגרסה המלאה החיבור פועל אוטומטית."); return; }
     if (authForm.user.trim().length < 2 || authForm.pass.length < 4) { setAuthMsg("שם משתמש (2+ תווים) וסיסמה (4+ תווים)"); return; }
+    if (mode === "register" && (!authForm.email.trim() || !authForm.email.includes("@"))) { setAuthMsg("כתובת אימייל תקינה נדרשת"); return; }
     setAuthBusy(true);
     try {
       const payload = { user: authForm.user.trim(), pass: authForm.pass };
@@ -617,7 +645,8 @@ function KetoApp() {
         await api("/data/save", { token: d.token, data: appData() }).catch(() => {});
         setAuthMsg("✓ נרשמת והנתונים הנוכחיים גובו לענן");
       }
-      setAuthForm({ user: "", pass: "" });
+      setAuthForm({ user: "", pass: "", email: "" });
+      setAuthMode("login");
     } catch (e) { setAuthMsg(e.message); }
     finally { setAuthBusy(false); }
   };
@@ -637,8 +666,9 @@ function KetoApp() {
   const logout = async () => {
     setAuth(null); setAuthMsg(null);
     await window.storage.delete("ketome-auth").catch(() => {});
+  };
 
-     const doForgotUsername = async () => {
+  const doForgotUsername = async () => {
     setAuthMsg(null);
     if (!forgotEmail.trim()) { setAuthMsg("יש להזין כתובת אימייל"); return; }
     setAuthBusy(true);
@@ -685,7 +715,6 @@ function KetoApp() {
       setAttachEmailValue("");
     } catch (e) { setAuthMsg(e.message); }
     finally { setAuthBusy(false); }
-  };
   };
 
   /* ─ תרופות: ממתינות להיום ─ */
@@ -1364,7 +1393,7 @@ function KetoApp() {
               )}
             </section>
 
-<section style={{ marginTop: 28 }}>
+            <section style={{ marginTop: 28 }}>
               <Label>חשבון אישי</Label>
               {!auth ? (
                 <div style={{ marginTop: 6 }}>
