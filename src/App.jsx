@@ -19,8 +19,12 @@ if (typeof window !== "undefined" && !window.storage) {
 }
 
 /* ═══ KetoMe · v3.2.0 · עיצוב מינימליסטי ═══ */
-const T = { paper: "#FBFBF9", ink: "#161613", muted: "#8B8A83", hair: "#E7E5DF", accent: "#0F6B5C", warn: "#B4552D", mid: "#C99A2E" };
-const APP_VERSION = "1.3.1";
+const LIGHT_THEME = { paper: "#FBFBF9", ink: "#161613", muted: "#8B8A83", hair: "#E7E5DF", accent: "#0F6B5C", warn: "#B4552D", mid: "#C99A2E" };
+const DARK_THEME = { paper: "#17181B", ink: "#F2F1ED", muted: "#9A9A95", hair: "#2E2F33", accent: "#3ED9A0", warn: "#E5906B", mid: "#E3C767" };
+/* T הוא משתנה מודולרי הניתן לשינוי — מתעדכן בתחילת כל רינדור של KetoApp לפי ערכת הנושא הנבחרת,
+   כך שרכיבי עזר ברמת המודול (Ruler, Big, Label, Metric) תמיד רואים את הצבעים העדכניים */
+let T = LIGHT_THEME;
+const APP_VERSION = "1.5.0";
 
 /* כתובת השרת מוגדרת פעם אחת כאן ע"י המפתח (Cloudflare Worker) — לא ע"י המשתמש.
    כשריקה: הרשמה/סנכרון ענן מנוטרלים, וניתוח AI עובד ישירות (בסביבת התצוגה). */
@@ -42,6 +46,15 @@ const gkiZone = (g) => g == null ? null : g < 1 ? { label: "קטוזיס תרפ�
 const ketoneZone = (k) => k == null ? null : k < 0.5 ? { label: "מחוץ לקטוזיס", color: T.warn } : k <= 1.5 ? { label: "קטוזיס קל", color: T.ink } : k <= 3 ? { label: "קטוזיס אופטימלי", color: T.accent } : { label: "קטונים גבוהים", color: T.warn };
 const URIC_FACTOR = 59.48;
 const uricZone = (u) => u == null ? null : u < 3.4 ? { label: "מתחת לטווח", color: T.warn } : u <= 7 ? { label: "בטווח", color: T.accent } : { label: "מעל הטווח", color: T.warn };
+/* סיווג לחץ דם — לפי הערך הגבוה מבין סיסטולי/דיאסטולי (הנחיות כלליות, לא ייעוץ רפואי) */
+const bpZone = (sys, dia) => {
+  if (sys == null || dia == null) return null;
+  if (sys >= 180 || dia >= 120) return { label: "משבר יתר לחץ דם — פנייה דחופה לרופא", color: T.warn };
+  if (sys >= 140 || dia >= 90) return { label: "יתר לחץ דם שלב 2", color: T.warn };
+  if (sys >= 130 || dia >= 80) return { label: "יתר לחץ דם שלב 1", color: T.warn };
+  if (sys >= 120) return { label: "גבולי", color: T.mid };
+  return { label: "תקין", color: T.accent };
+};
 const parseUric = (raw) => { const v = parseFloat(raw); return isNaN(v) ? null : v > 25 ? v / URIC_FACTOR : v; };
 const URINE_LEVELS = ["שלילי", "עקבות", "נמוך (1.5)", "בינוני (4)", "גבוה (8+)"];
 
@@ -217,7 +230,7 @@ const Metric = ({ label, value, unit, sub, color = T.ink }) => (
     {sub && <div style={{ fontSize: 11, color: T.muted, whiteSpace: "nowrap" }}>{sub}</div>}
   </div>
 );
-const chartTick = { fontSize: 10, fill: T.muted, fontFamily: "Assistant" };
+const chartTick = () => ({ fontSize: 10, fill: T.muted, fontFamily: "Assistant" });
 
 /* מציג את השגיאה על המסך במקום מסך שחור — כדי שנוכל לאבחן מכל מכשיר */
 class ErrorBoundary extends React.Component {
@@ -257,6 +270,8 @@ function KetoApp() {
   const [authMsg, setAuthMsg] = useState(null);
   const [authBusy, setAuthBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [themeMode, setThemeMode] = useState("light"); // "light" | "dark"
+  T = themeMode === "dark" ? DARK_THEME : LIGHT_THEME; // עדכון המשתנה המודולרי לפני הרינדור
 
   /* תרופות קבועות + יומן חיישן ליברה */
   const [meds, setMeds] = useState([]);
@@ -292,7 +307,7 @@ function KetoApp() {
   const [photoResult, setPhotoResult] = useState(null);
   const [photoError, setPhotoError] = useState(null);
 
-  const [mForm, setMForm] = useState({ ketones: "", glucose: "", uric: "", urine: "", note: "" });
+  const [mForm, setMForm] = useState({ ketones: "", glucose: "", uric: "", urine: "", systolic: "", diastolic: "", note: "" });
   const [mOpen, setMOpen] = useState(false);
 
   const [insight, setInsight] = useState(null);
@@ -316,6 +331,7 @@ function KetoApp() {
           if (d.weights) setWeights(d.weights);
           if (d.meds) setMeds(d.meds);
           if (d.libreLogs) setLibreLogs(d.libreLogs);
+          if (d.themeMode) setThemeMode(d.themeMode);
         }
       } catch { /* אין נתונים שמורים עדיין */ }
       try {
@@ -332,13 +348,13 @@ function KetoApp() {
     const id = setTimeout(() => {
       window.storage
         .set("ketome-data", JSON.stringify({
-          profile, carbLimit, calLimit, weights, measurements, meds, libreLogs,
+          profile, carbLimit, calLimit, weights, measurements, meds, libreLogs, themeMode,
           meals: meals.map(({ thumb, ...m }) => m),
         }))
         .catch(() => {});
     }, 500);
     return () => clearTimeout(id);
-  }, [loaded, profile, carbLimit, calLimit, weights, measurements, meals, meds, libreLogs]);
+  }, [loaded, profile, carbLimit, calLimit, weights, measurements, meals, meds, libreLogs, themeMode]);
 
   /* ─ גיבוי אוטומטי לענן — אם מחוברים, כל שינוי מגובה ברקע (לא רק בלחיצה על הכפתור) ─ */
   useEffect(() => {
@@ -364,8 +380,10 @@ function KetoApp() {
   const lastK = measurements.find((m) => m.ketones != null);
   const lastG = measurements.find((m) => m.glucose != null);
   const lastU = measurements.find((m) => m.uric != null);
+  const lastBP = measurements.find((m) => m.systolic != null && m.diastolic != null);
   const gki = lastK && lastG ? lastG.glucose / 18 / lastK.ketones : null;
   const gz = gkiZone(gki), kz = ketoneZone(lastK?.ketones), uz = uricZone(lastU?.uric);
+  const bpz = lastBP ? bpZone(lastBP.systolic, lastBP.diastolic) : null;
 
   const dailyCarbsMap = useMemo(() => {
     const m = {};
@@ -373,26 +391,36 @@ function KetoApp() {
     return m;
   }, [meals]);
 
-  /* לוח 28 ימים אחרונים */
-  const calendar = useMemo(() => {
-    const days = [];
-    const now = new Date(); now.setHours(12, 0, 0, 0);
-    const start = new Date(now); start.setDate(now.getDate() - 27);
-    start.setDate(start.getDate() - start.getDay()); // יישור לתחילת שבוע (א׳)
-    for (let d = new Date(start); d <= now; d.setDate(d.getDate() + 1)) {
-      const key = dayKey(d.getTime());
-      days.push({ key, label: `${d.getDate()}/${d.getMonth() + 1}`, dow: d.getDay(), grams: dailyCarbsMap[key] });
-    }
-    return days;
-  }, [dailyCarbsMap]);
-
+  /* סטטוס יומי, מפושט לשלוש רמות בלבד */
   const dayColor = (g) => {
-    if (g == null) return { bg: "transparent", bd: T.hair };
-    if (g <= carbLimit - 20) return { bg: T.accent, bd: T.accent };
-    if (g <= carbLimit) return { bg: "#7FA894", bd: "#7FA894" };
-    if (g <= carbLimit + 20) return { bg: T.mid, bd: T.mid };
-    return { bg: T.warn, bd: T.warn };
+    if (g == null) return { bg: "transparent", bd: T.hair, label: "no data" };
+    if (g <= carbLimit - 15) return { bg: T.accent, bd: T.accent, label: "מתחת ליעד" };
+    if (g <= carbLimit) return { bg: "#7FA894", bd: "#7FA894", label: "ביעד" };
+    return { bg: T.warn, bd: T.warn, label: "מעל היעד" };
   };
+
+  /* תצוגה שבועית — כל שבוע כשורה אחת עם ממוצע פחמימות, במקום 28 תאי יום נפרדים */
+  const weeklyCalendar = useMemo(() => {
+    const weeks = [];
+    const now = new Date(); now.setHours(12, 0, 0, 0);
+    const currentWeekStart = new Date(now); currentWeekStart.setDate(now.getDate() - now.getDay());
+    for (let w = 0; w < 6; w++) {
+      const start = new Date(currentWeekStart); start.setDate(currentWeekStart.getDate() - w * 7);
+      const end = new Date(start); end.setDate(start.getDate() + 6);
+      const vals = [];
+      for (let d = new Date(start); d <= end && d <= now; d.setDate(d.getDate() + 1)) {
+        const v = dailyCarbsMap[dayKey(d.getTime())];
+        if (v != null) vals.push(v);
+      }
+      const avg = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+      weeks.push({
+        key: w, isCurrent: w === 0, count: vals.length,
+        label: w === 0 ? "השבוע הנוכחי" : `${start.getDate()}/${start.getMonth() + 1} – ${end.getDate()}/${end.getMonth() + 1}`,
+        avg,
+      });
+    }
+    return weeks;
+  }, [dailyCarbsMap]);
 
   const streaks = useMemo(() => {
     let streak = 0;
@@ -525,10 +553,16 @@ function KetoApp() {
 
   const addMeasurement = () => {
     const k = parseFloat(mForm.ketones), g = parseFloat(mForm.glucose), u = parseUric(mForm.uric);
-    if (isNaN(k) && isNaN(g) && u == null && !mForm.urine) return;
+    const sys = parseFloat(mForm.systolic), dia = parseFloat(mForm.diastolic);
+    const hasBP = !isNaN(sys) && !isNaN(dia);
+    if (isNaN(k) && isNaN(g) && u == null && !hasBP && !mForm.urine) return;
     const ts = Date.now();
-    setMeasurements([{ id: ts, ts, ketones: isNaN(k) ? null : k, glucose: isNaN(g) ? null : g, uric: u, urine: mForm.urine || null, note: mForm.note.trim() || null }, ...measurements]);
-    setMForm({ ketones: "", glucose: "", uric: "", urine: "", note: "" });
+    setMeasurements([{
+      id: ts, ts, ketones: isNaN(k) ? null : k, glucose: isNaN(g) ? null : g, uric: u,
+      systolic: hasBP ? sys : null, diastolic: hasBP ? dia : null,
+      urine: mForm.urine || null, note: mForm.note.trim() || null,
+    }, ...measurements]);
+    setMForm({ ketones: "", glucose: "", uric: "", urine: "", systolic: "", diastolic: "", note: "" });
     setMOpen(false);
   };
 
@@ -562,6 +596,7 @@ function KetoApp() {
         if (m.ketones != null) p.push(`קטונים ${fmt(m.ketones)} mmol/L`);
         if (m.glucose != null) p.push(`גלוקוז ${fmt(m.glucose)} mg/dL (${fmt(m.glucose / 18)} mmol)`);
         if (m.uric != null) p.push(`ח. אורית ${fmt(m.uric)} mg/dL`);
+        if (m.systolic != null) p.push(`לחץ דם ${fmt(m.systolic)}/${fmt(m.diastolic)}`);
         if (m.urine) p.push(`שתן: ${m.urine}`);
         L.push(`• ${timeOf(m.ts)} — ${p.join(" · ")}`);
       });
@@ -779,15 +814,16 @@ function KetoApp() {
         חיישן_ליברה: libreLogs.slice(0, 10).map((l) => ({ תאריך: dateOf(l.ts), שעה: timeOf(l.ts), גלוקוז: l.glucose_now, מגמה: l.trend, דפוס: l.pattern })),
         תרופות_שלא_סומנו_היום: pendingMeds.length,
       };
-      const parsed = await fetch("https://api.anthropic.com/v1/messages", {
+      const prompt = `אתה יועץ לדיאטה קטוגנית. נתונים: ${JSON.stringify(summary)}\n\nכתוב בעברית ניתוח (עד 200 מילים), 2–4 פסקאות בלי כותרות. חשוב במיוחד: הצלב בין זמני הארוחות לבין דפוסי הגלוקוז מהחיישן — אם אחרי ארוחה מסוימת (לפי שעה) נראית עלייה בגלוקוז, ציין את הקשר במפורש. זהה דפוסים חוזרים בין ימים, מה עובד ומה לשפר. אם חסר מידע להצלבה — אמור מה לתעד. סיים במשפט שזה אינו ייעוץ רפואי.`;
+      if (!SERVER_URL) throw new Error("אין שרת מחובר");
+      const r = await fetch(SERVER_URL.replace(/\/$/, "") + "/insights", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-6", max_tokens: 1000,
-          messages: [{ role: "user", content: `אתה יועץ לדיאטה קטוגנית. נתונים: ${JSON.stringify(summary)}\n\nכתוב בעברית ניתוח (עד 200 מילים), 2–4 פסקאות בלי כותרות. חשוב במיוחד: הצלב בין זמני הארוחות לבין דפוסי הגלוקוז מהחיישן — אם אחרי ארוחה מסוימת (לפי שעה) נראית עלייה בגלוקוז, ציין את הקשר במפורש. זהה דפוסים חוזרים בין ימים, מה עובד ומה לשפר. אם חסר מידע להצלבה — אמור מה לתעד. סיים במשפט שזה אינו ייעוץ רפואי.` }],
-        }),
-      }).then((r) => r.json());
-      setInsight((parsed.content || []).map((i) => i.text || "").join("\n").trim());
-    } catch { setInsight("הפקת התובנות נכשלה, נסו שוב"); }
+        body: JSON.stringify({ prompt }),
+      });
+      const d = await r.json();
+      if (!r.ok || d.error) throw new Error(d.error || `שגיאה (${r.status})`);
+      setInsight((d.text || "").trim());
+    } catch (e) { setInsight(`הפקת התובנות נכשלה: ${e.message || "נסו שוב"}`); }
     finally { setInsightLoading(false); }
   };
 
@@ -803,7 +839,7 @@ function KetoApp() {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@300;400;500&family=Assistant:wght@400;600;700&display=swap');
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-        html, body { margin: 0; background: #F1F0EC; }
+        html, body { margin: 0; background: ${themeMode === "dark" ? "#0E0F11" : "#F1F0EC"}; }
         input:focus { border-bottom-color: ${T.ink} !important; }
         button { font-family: 'Assistant', sans-serif; }
         @keyframes pulse { 0%,100% { opacity: .35 } 50% { opacity: 1 } }
@@ -1074,6 +1110,13 @@ function KetoApp() {
                   <div style={{ marginTop: 4 }}><Big color={gz ? gz.color : T.ink}>{fmt(gki)}</Big></div>
                   {gz && <div style={{ fontSize: 12, color: gz.color, marginTop: 4 }}>{gz.label}</div>}
                 </div>
+                <div><Label>לחץ דם</Label>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 4, marginTop: 4 }}>
+                    <Big color={bpz ? bpz.color : T.ink}>{lastBP ? `${fmt(lastBP.systolic)}/${fmt(lastBP.diastolic)}` : "—"}</Big>
+                    <span style={{ fontSize: 12, color: T.muted }}>mmHg</span>
+                  </div>
+                  {bpz && <div style={{ fontSize: 12, color: bpz.color, marginTop: 4 }}>{bpz.label}</div>}
+                </div>
               </div>
             </section>
 
@@ -1086,6 +1129,10 @@ function KetoApp() {
                   </div>
                   <input placeholder="חומצה אורית — mg/dL או µmol/L" inputMode="decimal" value={mForm.uric} onChange={(e) => setMForm({ ...mForm, uric: e.target.value })} style={input()} />
                   {parseUric(mForm.uric) != null && parseFloat(mForm.uric) > 25 && <div style={{ fontSize: 12, color: T.muted, marginTop: 4 }}>זוהה כ־µmol/L → {fmt(parseUric(mForm.uric))} mg/dL</div>}
+                  <div style={{ display: "flex", gap: 16 }}>
+                    <input placeholder="לחץ דם סיסטולי" inputMode="numeric" value={mForm.systolic} onChange={(e) => setMForm({ ...mForm, systolic: e.target.value })} style={input()} />
+                    <input placeholder="לחץ דם דיאסטולי" inputMode="numeric" value={mForm.diastolic} onChange={(e) => setMForm({ ...mForm, diastolic: e.target.value })} style={input()} />
+                  </div>
                   <div style={{ marginTop: 14 }}>
                     <Label style={{ marginBottom: 8 }}>סטיק שתן (אופציונלי)</Label>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
@@ -1151,6 +1198,7 @@ function KetoApp() {
                     {m.ketones != null && <Metric label="קטונים בדם" value={fmt(m.ketones)} unit="mmol/L" color={ketoneZone(m.ketones).color} sub={ketoneZone(m.ketones).label} />}
                     {m.glucose != null && <Metric label="גלוקוז" value={fmt(m.glucose)} unit="mg/dL" sub={`= ${fmt(m.glucose / 18)} mmol/L`} />}
                     {m.uric != null && <Metric label="חומצה אורית" value={fmt(m.uric)} unit="mg/dL" color={uricZone(m.uric).color} sub={`= ${fmt(m.uric * URIC_FACTOR)} µmol/L`} />}
+                    {m.systolic != null && <Metric label="לחץ דם" value={`${fmt(m.systolic)}/${fmt(m.diastolic)}`} unit="mmHg" color={bpZone(m.systolic, m.diastolic).color} sub={bpZone(m.systolic, m.diastolic).label} />}
                     {m.urine && <Metric label="סטיק שתן" value={m.urine} unit="" />}
                   </div>
                   {m.note && <div style={{ fontSize: 12.5, color: T.muted, marginTop: 6 }}>{m.note}</div>}
@@ -1223,25 +1271,25 @@ function KetoApp() {
         {tab === "history" && (
           <>
             <section style={{ paddingTop: 26 }}>
-              <Label>לוח 28 ימים — פחמימות מול היעד</Label>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6, marginTop: 14 }}>
-                {["א׳", "ב׳", "ג׳", "ד׳", "ה׳", "ו׳", "ש׳"].map((d) => <div key={d} style={{ textAlign: "center", fontSize: 10.5, color: T.muted }}>{d}</div>)}
-                {calendar.map((d) => {
-                  const c = dayColor(d.grams);
-                  const filled = d.grams != null;
+              <Label>סיכום שבועי — פחמימות מול היעד</Label>
+              <div style={{ marginTop: 14 }}>
+                {weeklyCalendar.map((w) => {
+                  const c = dayColor(w.avg);
                   return (
-                    <div key={d.key} title={filled ? `${d.label}: ${fmt(d.grams)} גר׳` : d.label}
-                      style={{ aspectRatio: "1", border: `1px solid ${c.bd}`, background: c.bg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: filled ? T.paper : T.muted, fontVariantNumeric: "tabular-nums" }}>
-                      {d.label}
+                    <div key={w.key} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: `1px solid ${T.hair}` }}>
+                      <div style={{ width: 10, height: 10, borderRadius: 999, border: `1px solid ${c.bd}`, background: c.bg, flexShrink: 0 }} />
+                      <div style={{ flex: 1, fontSize: 14, fontWeight: w.isCurrent ? 700 : 400 }}>{w.label}</div>
+                      <div style={{ fontSize: 13, color: T.muted, fontVariantNumeric: "tabular-nums" }}>
+                        {w.avg == null ? "no data" : `ממוצע ${fmt(w.avg)} גר׳ · ${w.count} ${w.count === 1 ? "יום" : "ימים"}`}
+                      </div>
                     </div>
                   );
                 })}
               </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px", marginTop: 10, fontSize: 11, color: T.muted }}>
-                <span><span style={{ display: "inline-block", width: 9, height: 9, border: `1px solid ${T.hair}`, verticalAlign: "middle", marginLeft: 4 }} />אין נתון</span>
-                <span><span style={{ display: "inline-block", width: 9, height: 9, background: T.accent, verticalAlign: "middle", marginLeft: 4 }} />מצוין (מתחת ליעד −20)</span>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px", marginTop: 12, fontSize: 11, color: T.muted }}>
+                <span><span style={{ display: "inline-block", width: 9, height: 9, border: `1px solid ${T.hair}`, verticalAlign: "middle", marginLeft: 4 }} />no data</span>
+                <span><span style={{ display: "inline-block", width: 9, height: 9, background: T.accent, verticalAlign: "middle", marginLeft: 4 }} />מתחת ליעד</span>
                 <span><span style={{ display: "inline-block", width: 9, height: 9, background: "#7FA894", verticalAlign: "middle", marginLeft: 4 }} />ביעד</span>
-                <span><span style={{ display: "inline-block", width: 9, height: 9, background: T.mid, verticalAlign: "middle", marginLeft: 4 }} />קרוב ליעד (עד +20)</span>
                 <span><span style={{ display: "inline-block", width: 9, height: 9, background: T.warn, verticalAlign: "middle", marginLeft: 4 }} />מעל היעד</span>
               </div>
             </section>
@@ -1257,8 +1305,8 @@ function KetoApp() {
                 <Label>קטונים בדם (mmol/L)</Label>
                 <div style={{ height: 160, marginTop: 10, direction: "ltr" }}>
                   <ResponsiveContainer><LineChart data={ketoneSeries} margin={{ top: 8, left: -20, right: 8 }}>
-                    <XAxis dataKey="t" tick={chartTick} tickLine={false} axisLine={{ stroke: T.hair }} />
-                    <YAxis tick={chartTick} tickLine={false} axisLine={false} domain={[0, "auto"]} />
+                    <XAxis dataKey="t" tick={chartTick()} tickLine={false} axisLine={{ stroke: T.hair }} />
+                    <YAxis tick={chartTick()} tickLine={false} axisLine={false} domain={[0, "auto"]} />
                     <Tooltip contentStyle={{ fontFamily: "Assistant", fontSize: 12, direction: "rtl" }} />
                     <ReferenceLine y={1.5} stroke={T.accent} strokeDasharray="4 4" /><ReferenceLine y={3} stroke={T.accent} strokeDasharray="4 4" />
                     <Line type="monotone" dataKey="v" stroke={T.ink} strokeWidth={1.5} dot={{ r: 3, fill: T.ink }} name="קטונים" />
@@ -1271,8 +1319,8 @@ function KetoApp() {
                 <Label>גלוקוז (mg/dL)</Label>
                 <div style={{ height: 160, marginTop: 10, direction: "ltr" }}>
                   <ResponsiveContainer><LineChart data={glucoseSeries} margin={{ top: 8, left: -20, right: 8 }}>
-                    <XAxis dataKey="t" tick={chartTick} tickLine={false} axisLine={{ stroke: T.hair }} />
-                    <YAxis tick={chartTick} tickLine={false} axisLine={false} domain={["auto", "auto"]} />
+                    <XAxis dataKey="t" tick={chartTick()} tickLine={false} axisLine={{ stroke: T.hair }} />
+                    <YAxis tick={chartTick()} tickLine={false} axisLine={false} domain={["auto", "auto"]} />
                     <Tooltip contentStyle={{ fontFamily: "Assistant", fontSize: 12, direction: "rtl" }} />
                     <Line type="monotone" dataKey="v" stroke={T.accent} strokeWidth={1.5} dot={{ r: 3, fill: T.accent }} name="גלוקוז" />
                   </LineChart></ResponsiveContainer>
@@ -1284,8 +1332,8 @@ function KetoApp() {
                 <Label>פחמימות יומיות (גר׳)</Label>
                 <div style={{ height: 160, marginTop: 10, direction: "ltr" }}>
                   <ResponsiveContainer><BarChart data={dailyCarbsSeries} margin={{ top: 8, left: -20, right: 8 }}>
-                    <XAxis dataKey="t" tick={chartTick} tickLine={false} axisLine={{ stroke: T.hair }} />
-                    <YAxis tick={chartTick} tickLine={false} axisLine={false} />
+                    <XAxis dataKey="t" tick={chartTick()} tickLine={false} axisLine={{ stroke: T.hair }} />
+                    <YAxis tick={chartTick()} tickLine={false} axisLine={false} />
                     <Tooltip contentStyle={{ fontFamily: "Assistant", fontSize: 12, direction: "rtl" }} />
                     <ReferenceLine y={carbLimit} stroke={T.warn} strokeDasharray="4 4" />
                     <Bar dataKey="v" fill={T.accent} maxBarSize={28} name="פחמימות" />
@@ -1298,8 +1346,8 @@ function KetoApp() {
                 <Label>משקל (ק"ג)</Label>
                 <div style={{ height: 160, marginTop: 10, direction: "ltr" }}>
                   <ResponsiveContainer><LineChart data={weightSeries} margin={{ top: 8, left: -20, right: 8 }}>
-                    <XAxis dataKey="t" tick={chartTick} tickLine={false} axisLine={{ stroke: T.hair }} />
-                    <YAxis tick={chartTick} tickLine={false} axisLine={false} domain={["auto", "auto"]} />
+                    <XAxis dataKey="t" tick={chartTick()} tickLine={false} axisLine={{ stroke: T.hair }} />
+                    <YAxis tick={chartTick()} tickLine={false} axisLine={false} domain={["auto", "auto"]} />
                     <Tooltip contentStyle={{ fontFamily: "Assistant", fontSize: 12, direction: "rtl" }} />
                     <Line type="monotone" dataKey="v" stroke={T.ink} strokeWidth={1.5} dot={{ r: 3, fill: T.ink }} name="משקל" />
                   </LineChart></ResponsiveContainer>
@@ -1317,6 +1365,14 @@ function KetoApp() {
         {/* ═══ פרטים ═══ */}
         {tab === "profile" && (
           <>
+            <section style={{ paddingTop: 26 }}>
+              <Label>תצוגה</Label>
+              <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                <button style={pill(themeMode === "light")} onClick={() => setThemeMode("light")}>☀ בהיר</button>
+                <button style={pill(themeMode === "dark")} onClick={() => setThemeMode("dark")}>☾ כהה</button>
+              </div>
+            </section>
+
             <section style={{ paddingTop: 26 }}>
               <Label>חלק 1 · פרטים בסיסיים</Label>
               <div style={{ display: "flex", gap: 16, marginTop: 6 }}>
