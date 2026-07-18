@@ -24,7 +24,7 @@ const DARK_THEME = { paper: "#17181B", ink: "#F2F1ED", muted: "#9A9A95", hair: "
 /* T הוא משתנה מודולרי הניתן לשינוי — מתעדכן בתחילת כל רינדור של KetoApp לפי ערכת הנושא הנבחרת,
    כך שרכיבי עזר ברמת המודול (Ruler, Big, Label, Metric) תמיד רואים את הצבעים העדכניים */
 let T = LIGHT_THEME;
-const APP_VERSION = "1.5.1";
+const APP_VERSION = "1.6.1";
 
 /* כתובת השרת מוגדרת פעם אחת כאן ע"י המפתח (Cloudflare Worker) — לא ע"י המשתמש.
    כשריקה: הרשמה/סנכרון ענן מנוטרלים, וניתוח AI עובד ישירות (בסביבת התצוגה). */
@@ -39,6 +39,21 @@ const dayKey = (ts) => {
 };
 const todayStr = new Date().toLocaleDateString("he-IL", { weekday: "long", day: "numeric", month: "long" });
 const todayKey = dayKey(Date.now());
+
+/* יום תחילת השבוע — 0=ראשון (ברירת מחדל בישראל). לשינוי במדינות אחרות: 1=שני (אירופה/רוב העולם), 6=שבת. */
+const WEEK_START_DOW = 0;
+const startOfWeek = (date) => {
+  const d = new Date(date); d.setHours(12, 0, 0, 0);
+  const diff = (d.getDay() - WEEK_START_DOW + 7) % 7;
+  d.setDate(d.getDate() - diff);
+  return d;
+};
+const DOW_LABELS = ["א׳", "ב׳", "ג׳", "ד׳", "ה׳", "ו׳", "ש׳"];
+const dowLabelsFromStart = () => { // מסודר לפי סדר תצוגה בפועל, מתחיל ב-WEEK_START_DOW
+  const out = [];
+  for (let i = 0; i < 7; i++) out.push(DOW_LABELS[(WEEK_START_DOW + i) % 7]);
+  return out;
+};
 
 const isMedPending = (m, today, nowHM) => m.takenOn !== today && (!m.time || m.time <= nowHM);
 
@@ -400,27 +415,25 @@ function KetoApp() {
   };
 
   /* תצוגה שבועית — כל שבוע כשורה אחת עם ממוצע פחמימות, במקום 28 תאי יום נפרדים */
-  const weeklyCalendar = useMemo(() => {
-    const weeks = [];
-    const now = new Date(); now.setHours(12, 0, 0, 0);
-    const currentWeekStart = new Date(now); currentWeekStart.setDate(now.getDate() - now.getDay());
-    for (let w = 0; w < 6; w++) {
-      const start = new Date(currentWeekStart); start.setDate(currentWeekStart.getDate() - w * 7);
-      const end = new Date(start); end.setDate(start.getDate() + 6);
-      const vals = [];
-      for (let d = new Date(start); d <= end && d <= now; d.setDate(d.getDate() + 1)) {
-        const v = dailyCarbsMap[dayKey(d.getTime())];
-        if (v != null) vals.push(v);
-      }
-      const avg = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
-      weeks.push({
-        key: w, isCurrent: w === 0, count: vals.length,
-        label: w === 0 ? "השבוע הנוכחי" : `${start.getDate()}/${start.getMonth() + 1} – ${end.getDate()}/${end.getMonth() + 1}`,
-        avg,
-      });
+  /* ─ דפדפן שבועי: מציג את כל 7 הימים של שבוע נבחר, עם חצים לשבוע קודם/הבא ─ */
+  const [weekAnchor, setWeekAnchor] = useState(() => startOfWeek(new Date()));
+  const goPrevWeek = () => setWeekAnchor((w) => { const d = new Date(w); d.setDate(d.getDate() - 7); return d; });
+  const goNextWeek = () => setWeekAnchor((w) => { const d = new Date(w); d.setDate(d.getDate() + 7); return d; });
+  const isCurrentWeekView = dayKey(weekAnchor.getTime()) === dayKey(startOfWeek(new Date()).getTime());
+  const viewWeekDays = useMemo(() => {
+    const days = [];
+    const dowLabels = dowLabelsFromStart();
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(weekAnchor); d.setDate(weekAnchor.getDate() + i);
+      const key = dayKey(d.getTime());
+      days.push({ key, dow: dowLabels[i], date: `${d.getDate()}/${d.getMonth() + 1}`, grams: dailyCarbsMap[key], isFuture: d.getTime() > Date.now() });
     }
-    return weeks;
-  }, [dailyCarbsMap]);
+    return days;
+  }, [weekAnchor, dailyCarbsMap]);
+  const viewWeekLabel = useMemo(() => {
+    const end = new Date(weekAnchor); end.setDate(weekAnchor.getDate() + 6);
+    return `${weekAnchor.getDate()}/${weekAnchor.getMonth() + 1} – ${end.getDate()}/${end.getMonth() + 1}`;
+  }, [weekAnchor]);
 
   const streaks = useMemo(() => {
     let streak = 0;
@@ -1272,22 +1285,35 @@ function KetoApp() {
         {tab === "history" && (
           <>
             <section style={{ paddingTop: 26 }}>
-              <Label>סיכום שבועי — פחמימות מול היעד</Label>
-              <div style={{ marginTop: 14 }}>
-                {weeklyCalendar.map((w) => {
-                  const c = dayColor(w.avg);
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <button onClick={goPrevWeek} aria-label="שבוע קודם"
+                  style={{ width: 34, height: 34, border: `1px solid ${T.ink}`, background: "transparent", color: T.ink, borderRadius: 999, fontSize: 16, cursor: "pointer", flexShrink: 0 }}>‹</button>
+                <div style={{ flex: 1, textAlign: "center" }}>
+                  <div style={{ fontSize: 15, fontWeight: 700 }}>{isCurrentWeekView ? "השבוע הנוכחי" : viewWeekLabel}</div>
+                  {!isCurrentWeekView && <div style={{ fontSize: 11.5, color: T.muted, marginTop: 2 }}>{viewWeekLabel}</div>}
+                </div>
+                <button onClick={goNextWeek} disabled={isCurrentWeekView} aria-label="שבוע הבא"
+                  style={{ width: 34, height: 34, border: `1px solid ${isCurrentWeekView ? T.hair : T.ink}`, background: "transparent", color: isCurrentWeekView ? T.hair : T.ink, borderRadius: 999, fontSize: 16, cursor: isCurrentWeekView ? "default" : "pointer", flexShrink: 0 }}>›</button>
+              </div>
+
+              <div style={{ display: "flex", gap: 6, marginTop: 18 }}>
+                {viewWeekDays.map((d) => {
+                  const c = dayColor(d.grams);
                   return (
-                    <div key={w.key} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: `1px solid ${T.hair}` }}>
-                      <div style={{ width: 10, height: 10, borderRadius: 999, border: `1px solid ${c.bd}`, background: c.bg, flexShrink: 0 }} />
-                      <div style={{ flex: 1, fontSize: 14, fontWeight: w.isCurrent ? 700 : 400 }}>{w.label}</div>
-                      <div style={{ fontSize: 13, color: T.muted, fontVariantNumeric: "tabular-nums" }}>
-                        {w.avg == null ? "no data" : `ממוצע ${fmt(w.avg)} גר׳ · ${w.count} ${w.count === 1 ? "יום" : "ימים"}`}
+                    <div key={d.key} style={{ flex: 1, textAlign: "center", opacity: d.isFuture ? 0.35 : 1 }}>
+                      <div style={{ fontSize: 10.5, color: T.muted, marginBottom: 4 }}>{d.dow}</div>
+                      <div style={{ aspectRatio: "1", border: `1px solid ${c.bd}`, background: c.bg, borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: c.bg === "transparent" ? T.muted : T.paper, fontVariantNumeric: "tabular-nums" }}>
+                        {d.date}
+                      </div>
+                      <div style={{ fontSize: 9.5, color: T.muted, marginTop: 3, fontVariantNumeric: "tabular-nums" }}>
+                        {d.isFuture ? "" : d.grams == null ? "no data" : `${fmt(d.grams)} גר׳`}
                       </div>
                     </div>
                   );
                 })}
               </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px", marginTop: 12, fontSize: 11, color: T.muted }}>
+
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px", marginTop: 16, fontSize: 11, color: T.muted }}>
                 <span><span style={{ display: "inline-block", width: 9, height: 9, border: `1px solid ${T.hair}`, verticalAlign: "middle", marginLeft: 4 }} />no data</span>
                 <span><span style={{ display: "inline-block", width: 9, height: 9, background: T.accent, verticalAlign: "middle", marginLeft: 4 }} />מתחת ליעד</span>
                 <span><span style={{ display: "inline-block", width: 9, height: 9, background: "#7FA894", verticalAlign: "middle", marginLeft: 4 }} />ביעד</span>
