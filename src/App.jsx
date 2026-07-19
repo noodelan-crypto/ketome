@@ -18,13 +18,13 @@ if (typeof window !== "undefined" && !window.storage) {
   };
 }
 
-/* ═══ KetoMe · v1.9.5 · עיצוב מינימליסטי ═══ */
+/* ═══ KetoMe · v1.9.6 · עיצוב מינימליסטי ═══ */
 const LIGHT_THEME = { paper: "#FBFBF9", ink: "#161613", muted: "#8B8A83", hair: "#E7E5DF", accent: "#0F6B5C", warn: "#B4552D", mid: "#C99A2E" };
 const DARK_THEME = { paper: "#17181B", ink: "#F2F1ED", muted: "#9A9A95", hair: "#2E2F33", accent: "#3ED9A0", warn: "#E5906B", mid: "#E3C767" };
 /* T הוא משתנה מודולרי הניתן לשינוי — מתעדכן בתחילת כל רינדור של KetoApp לפי ערכת הנושא הנבחרת,
    כך שרכיבי עזר ברמת המודול (Ruler, Big, Label, Metric) תמיד רואים את הצבעים העדכניים */
 let T = LIGHT_THEME;
-const APP_VERSION = "1.9.5";
+const APP_VERSION = "1.9.6";
 
 /* כתובת השרת מוגדרת פעם אחת כאן ע"י המפתח (Cloudflare Worker) — לא ע"י המשתמש.
    כשריקה: הרשמה/סנכרון ענן מנוטרלים, וניתוח AI עובד ישירות (בסביבת התצוגה). */
@@ -1221,7 +1221,7 @@ function KetoApp() {
         @keyframes blinkRed { 0%,100% { color: #B4552D; opacity: 1 } 50% { opacity: .25 } }
         .med-alert { animation: blinkRed 1.1s infinite; font-weight: 700; }
         @media (hover: hover) and (pointer: fine) {
-          .navbtn { font-size: 16px !important; padding: 19px 0 21px !important; }
+          .navbtn { font-size: 14px !important; padding: 12px 2px 11px !important; }
         }
       `}</style>
 
@@ -1233,13 +1233,34 @@ function KetoApp() {
         <div style={{ height: 1, background: T.ink, marginTop: 10 }} />
       </header>
 
-      <main style={{ flex: 1, maxWidth: 480, width: "100%", margin: "0 auto", padding: "0 24px 40px" }}>
+      <nav style={{ position: "sticky", top: 0, zIndex: 20, width: "100%", background: T.paper, borderBottom: `1px solid ${T.hair}` }}>
+        <div style={{ maxWidth: 480, margin: "0 auto", display: "flex", padding: "0 12px" }}>
+          {[
+            { id: "status", label: "סטטוס" },
+            { id: "measure", label: "מדידות" },
+            { id: "meds", label: "תרופות", alert: pendingMeds.length > 0 },
+            { id: "history", label: "היסטוריה" },
+            { id: "profile", label: "פרטים" },
+          ].map((t) => (
+            <button key={t.id} onClick={() => setTab(t.id)}
+              className={"navbtn" + (t.alert ? " med-alert" : "")}
+              style={{ flex: 1, minWidth: 0, padding: "11px 2px 10px", background: "transparent", border: "none", borderBottom: tab === t.id ? `2px solid ${T.ink}` : "2px solid transparent", fontSize: 13, fontWeight: tab === t.id ? 700 : 400, color: t.alert ? T.warn : tab === t.id ? T.ink : T.muted, cursor: "pointer", whiteSpace: "nowrap" }}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </nav>
+
+      <main style={{ flex: 1, maxWidth: 480, width: "100%", margin: "0 auto", padding: "0 24px calc(28px + env(safe-area-inset-bottom, 0px))" }}>
 
         {/* ═══ סטטוס ═══ */}
         {tab === "status" && (
           <>
-            <section style={{ paddingTop: 26 }}>
-              <Label>{over ? "חריגה מהיעד היומי" : "נותרו להיום"}</Label>
+            <section style={{ paddingTop: 18 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+                <Label>{over ? "חריגה מהיעד היומי" : "נותרו להיום"}</Label>
+                <button style={{ ...btn, padding: "8px 16px", fontSize: 13, flexShrink: 0 }} onClick={() => setMealModalOpen(true)}>+ הוספת ארוחה</button>
+              </div>
               <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginTop: 4 }}>
                 <Big color={statusColor} size={62}>{fmt(Math.abs(left))}</Big>
                 <span style={{ fontSize: 15, color: T.muted }}>גר׳ פחמימות</span>
@@ -1282,7 +1303,6 @@ function KetoApp() {
             <section style={{ marginTop: 28 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <Label>ארוחות היום · {todayMeals.length}</Label>
-                <button style={{ ...btnGhost, padding: "6px 16px", fontSize: 13 }} onClick={() => setMealModalOpen(true)}>+ הוספת ארוחה</button>
               </div>
               {todayMeals.length === 0 && <div style={{ marginTop: 14, fontSize: 14, color: T.muted }}>עוד לא נרשמו ארוחות היום.</div>}
               {todayMeals.map((m) => (
@@ -2003,23 +2023,7 @@ function KetoApp() {
         </div>
       )}
 
-      <nav style={{ position: "sticky", bottom: 0, zIndex: 20, width: "100%", background: T.paper, borderTop: `1px solid ${T.hair}`, paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
-        <div style={{ maxWidth: 480, margin: "0 auto", display: "flex" }}>
-          {[
-            { id: "status", label: "סטטוס" },
-            { id: "measure", label: "מדידות" },
-            { id: "meds", label: "תרופות", alert: pendingMeds.length > 0 },
-            { id: "history", label: "היסטוריה" },
-            { id: "profile", label: "פרטים" },
-          ].map((t) => (
-            <button key={t.id} onClick={() => setTab(t.id)}
-              className={"navbtn" + (t.alert ? " med-alert" : "")}
-              style={{ flex: 1, padding: "16px 0 18px", background: "transparent", border: "none", borderTop: tab === t.id ? `2px solid ${T.ink}` : "2px solid transparent", marginTop: -1, fontSize: 14, fontWeight: tab === t.id ? 700 : 400, color: t.alert ? T.warn : tab === t.id ? T.ink : T.muted, cursor: "pointer" }}>
-              {t.label}
-            </button>
-          ))}
-        </div>
-      </nav>
+
     </div>
   );
 }
