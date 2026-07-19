@@ -18,13 +18,13 @@ if (typeof window !== "undefined" && !window.storage) {
   };
 }
 
-/* ═══ KetoMe · v2.0.1 · עיצוב מינימליסטי ═══ */
+/* ═══ KetoMe · v2.0.2 · עיצוב מינימליסטי ═══ */
 const LIGHT_THEME = { paper: "#FBFBF9", ink: "#161613", muted: "#8B8A83", hair: "#E7E5DF", accent: "#0F6B5C", warn: "#B4552D", mid: "#C99A2E" };
 const DARK_THEME = { paper: "#17181B", ink: "#F2F1ED", muted: "#9A9A95", hair: "#2E2F33", accent: "#3ED9A0", warn: "#E5906B", mid: "#E3C767" };
 /* T הוא משתנה מודולרי הניתן לשינוי — מתעדכן בתחילת כל רינדור של KetoApp לפי ערכת הנושא הנבחרת,
    כך שרכיבי עזר ברמת המודול (Ruler, Big, Label, Metric) תמיד רואים את הצבעים העדכניים */
 let T = LIGHT_THEME;
-const APP_VERSION = "2.0.1";
+const APP_VERSION = "2.0.2";
 
 /* כתובת השרת מוגדרת פעם אחת כאן ע"י המפתח (Cloudflare Worker) — לא ע"י המשתמש.
    כשריקה: הרשמה/סנכרון ענן מנוטרלים, וניתוח AI עובד ישירות (בסביבת התצוגה). */
@@ -370,6 +370,7 @@ function KetoApp() {
 
   const [reportOpen, setReportOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const reportAutoCloseTimerRef = useRef(null);
 
   /* ─ טעינה אוטומטית מהאחסון המקומי בפתיחה (כולל "זכור אותי") ─ */
   useEffect(() => {
@@ -697,8 +698,8 @@ function KetoApp() {
   const changeTabBySwipe = (direction) => {
     const current = TAB_ORDER.indexOf(tab);
     if (current < 0) return;
-    const next = Math.max(0, Math.min(TAB_ORDER.length - 1, current + direction));
-    if (next !== current) setTab(TAB_ORDER[next]);
+    const next = (current + direction + TAB_ORDER.length) % TAB_ORDER.length;
+    setTab(TAB_ORDER[next]);
   };
 
   const toggleFoodFavorite = (food) => {
@@ -931,6 +932,35 @@ function KetoApp() {
   };
 
   /* ─ דוח יומי ─ */
+  const clearReportAutoCloseTimer = () => {
+    if (reportAutoCloseTimerRef.current) {
+      clearTimeout(reportAutoCloseTimerRef.current);
+      reportAutoCloseTimerRef.current = null;
+    }
+  };
+
+  const scheduleReportAutoClose = () => {
+    clearReportAutoCloseTimer();
+    reportAutoCloseTimerRef.current = window.setTimeout(() => {
+      setReportOpen(false);
+      reportAutoCloseTimerRef.current = null;
+    }, 6500);
+  };
+
+  const toggleReport = () => {
+    setReportOpen((open) => {
+      const next = !open;
+      if (next) window.setTimeout(scheduleReportAutoClose, 0);
+      else clearReportAutoCloseTimer();
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    if (!reportOpen) clearReportAutoCloseTimer();
+    return clearReportAutoCloseTimer;
+  }, [reportOpen]);
+
   const buildReport = () => {
     const L = [];
     L.push("📋 דוח יומי — KetoMe");
@@ -963,6 +993,7 @@ function KetoApp() {
   };
 
   const copyReport = async () => {
+    scheduleReportAutoClose();
     const text = buildReport();
     try {
       await navigator.clipboard.writeText(text);
@@ -978,6 +1009,7 @@ function KetoApp() {
   };
 
   const shareWhatsApp = () => {
+    scheduleReportAutoClose();
     window.open("https://wa.me/?text=" + encodeURIComponent(buildReport()), "_blank");
   };
 
@@ -1440,21 +1472,42 @@ function KetoApp() {
         .app-shell { touch-action: pan-y; }
         .swipe-hint { user-select: none; -webkit-user-select: none; }
         @media (max-width: 600px) {
-          .app-shell { max-width: 100% !important; }
-          .app-header { padding: calc(9px + env(safe-area-inset-top, 0px)) 14px 0 !important; max-width: 100% !important; }
-          .app-header > div:first-child > div:first-child { font-size: 16.5px !important; }
-          .app-header > div:first-child { gap: 8px !important; }
-          .app-nav > div { max-width: 100% !important; padding-inline: 5px !important; }
-          .navbtn { font-size: 11.5px !important; padding: 7px 1px 6px !important; }
-          .app-main { max-width: 100% !important; padding: 0 14px calc(16px + env(safe-area-inset-bottom, 0px)) !important; }
-          .status-section { padding-top: 6px !important; }
-          .status-section > div:first-child button { padding: 6px 12px !important; font-size: 12px !important; }
-          .meal-row { padding: 5px 0 !important; gap: 7px !important; }
-          .meal-row img, .meal-row > div:first-of-type { width: 31px !important; height: 31px !important; }
-          .report-button { padding: 6px 0 !important; font-size: 12px !important; }
-          .meal-modal { width: calc(100% - 8px) !important; padding: 9px 12px 12px !important; border-radius: 12px !important; max-height: none !important; }
-          .meal-modal section { margin-top: 12px !important; }
-          .meal-modal input { font-size: 14px !important; }
+          html { font-size: 14px; -webkit-text-size-adjust: 92%; text-size-adjust: 92%; }
+          .app-shell { max-width: 100% !important; border-inline: none !important; }
+          .app-header { padding: calc(6px + env(safe-area-inset-top, 0px)) 10px 0 !important; max-width: 100% !important; }
+          .app-header > div:first-child > div:first-child { font-size: 15px !important; line-height: 1.15 !important; }
+          .app-header > div:first-child { gap: 6px !important; }
+          .app-header .med-alert, .app-header button, .app-header span { font-size: 10.5px !important; }
+          .app-header > div:first-child > div:last-child { transform: scale(.9); transform-origin: left top; }
+          .app-nav > div { max-width: 100% !important; padding-inline: 2px !important; }
+          .navbtn { font-size: 10.5px !important; padding: 6px 0 5px !important; }
+          .swipe-hint { font-size: 8.5px !important; padding-top: 1px !important; }
+          .app-main { max-width: 100% !important; padding: 0 10px calc(12px + env(safe-area-inset-bottom, 0px)) !important; }
+          .app-main section { margin-top: 14px !important; }
+          .status-section { padding-top: 4px !important; }
+          .status-section > div:first-child { gap: 7px !important; }
+          .status-section > div:first-child button { padding: 5px 10px !important; font-size: 11px !important; }
+          .status-section > div:nth-child(2) { margin-top: 2px !important; gap: 7px !important; }
+          .status-section > div:nth-child(2) span:first-child { font-size: 40px !important; }
+          .status-section > div:nth-child(2) > span:last-child { font-size: 13px !important; }
+          .meal-row { padding: 4px 0 !important; gap: 6px !important; }
+          .meal-row img, .meal-row > div:first-of-type { width: 28px !important; height: 28px !important; }
+          .meal-row > div:nth-of-type(2) > div:first-child { font-size: 12.5px !important; }
+          .meal-row > div:nth-of-type(2) > div:last-child,
+          .meal-row > div:nth-of-type(3) > div:last-child { font-size: 10.5px !important; }
+          .report-button { padding: 5px 0 !important; font-size: 11.5px !important; }
+          .meal-modal { width: calc(100% - 4px) !important; height: calc(100dvh - 4px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) !important; padding: 7px 10px 10px !important; border-radius: 10px !important; max-height: none !important; }
+          .meal-modal section { margin-top: 10px !important; padding-top: 0 !important; }
+          .meal-modal input { font-size: 13px !important; padding-block: 7px !important; }
+          .meal-modal button, .meal-modal span { font-size: 12px; }
+          .meal-modal [style*="font-size: 18px"] { font-size: 16px !important; }
+          .meal-modal [style*="font-size: 16px"] { font-size: 14px !important; }
+          .meal-modal [style*="font-size: 15"] { font-size: 13px !important; }
+          .meal-modal [style*="font-size: 14"] { font-size: 12px !important; }
+          .meal-modal [style*="width: 38px"] { width: 32px !important; height: 32px !important; }
+          .meal-modal [style*="margin-top: 16px"] { margin-top: 10px !important; }
+          .meal-modal [style*="margin-top: 18px"] { margin-top: 11px !important; }
+          .meal-modal [style*="padding: 10px 22px"] { padding: 8px 14px !important; }
         }
         @media (hover: hover) and (pointer: fine) {
           .navbtn { font-size: 14px !important; padding: 12px 2px 11px !important; }
@@ -1489,7 +1542,7 @@ function KetoApp() {
           ))}
         </div>
       </nav>
-      <div className="swipe-hint" style={{ textAlign: "center", fontSize: 9.5, color: T.muted, paddingTop: 2 }}>החליקו ימינה או שמאלה בין הלשוניות</div>
+      <div className="swipe-hint" style={{ textAlign: "center", fontSize: 9.5, color: T.muted, paddingTop: 2 }}>החליקו ימינה או שמאלה בין הלשוניות · מעבר מחזורי</div>
 
       <main className="app-main" style={{ touchAction: "pan-y", flex: 1, maxWidth: 480, width: "100%", margin: "0 auto", padding: "0 24px calc(28px + env(safe-area-inset-bottom, 0px))" }}>
 
@@ -1525,11 +1578,11 @@ function KetoApp() {
 
               {/* דוח יומי — בולט וזמין */}
               <div style={{ marginTop: 14 }}>
-                <button className="report-button" style={{ ...btnGhost, width: "100%", padding: "9px 0", fontSize: 13.5 }} onClick={() => setReportOpen(!reportOpen)}>
+                <button className="report-button" style={{ ...btnGhost, width: "100%", padding: "9px 0", fontSize: 13.5 }} onClick={toggleReport}>
                   📤 דוח יומי — שיתוף והעתקה
                 </button>
                 {reportOpen && (
-                  <div style={{ marginTop: 12, borderTop: `1px solid ${T.ink}`, paddingTop: 12 }}>
+                  <div onPointerDown={scheduleReportAutoClose} onTouchStart={scheduleReportAutoClose} onKeyDown={scheduleReportAutoClose} style={{ marginTop: 12, borderTop: `1px solid ${T.ink}`, paddingTop: 12 }}>
                     <pre style={{ margin: 0, fontFamily: "'Assistant', sans-serif", fontSize: 13.5, lineHeight: 1.8, whiteSpace: "pre-wrap", color: T.ink }}>{buildReport()}</pre>
                     <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
                       <button style={{ ...btnGhost, flex: 1, padding: "10px 0" }} onClick={copyReport}>{copied ? "✓ הועתק" : "📋 העתקה"}</button>
