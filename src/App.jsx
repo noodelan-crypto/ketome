@@ -18,13 +18,13 @@ if (typeof window !== "undefined" && !window.storage) {
   };
 }
 
-/* ═══ KetoMe · v1.9.4 · עיצוב מינימליסטי ═══ */
+/* ═══ KetoMe · v1.9.5 · עיצוב מינימליסטי ═══ */
 const LIGHT_THEME = { paper: "#FBFBF9", ink: "#161613", muted: "#8B8A83", hair: "#E7E5DF", accent: "#0F6B5C", warn: "#B4552D", mid: "#C99A2E" };
 const DARK_THEME = { paper: "#17181B", ink: "#F2F1ED", muted: "#9A9A95", hair: "#2E2F33", accent: "#3ED9A0", warn: "#E5906B", mid: "#E3C767" };
 /* T הוא משתנה מודולרי הניתן לשינוי — מתעדכן בתחילת כל רינדור של KetoApp לפי ערכת הנושא הנבחרת,
    כך שרכיבי עזר ברמת המודול (Ruler, Big, Label, Metric) תמיד רואים את הצבעים העדכניים */
 let T = LIGHT_THEME;
-const APP_VERSION = "1.9.4";
+const APP_VERSION = "1.9.5";
 
 /* כתובת השרת מוגדרת פעם אחת כאן ע"י המפתח (Cloudflare Worker) — לא ע"י המשתמש.
    כשריקה: הרשמה/סנכרון ענן מנוטרלים, וניתוח AI עובד ישירות (בסביבת התצוגה). */
@@ -256,7 +256,7 @@ class ErrorBoundary extends React.Component {
   render() {
     if (this.state.err) {
       return (
-        <div dir="rtl" style={{ padding: 24, fontFamily: "sans-serif", background: "#FBFBF9", minHeight: "100vh", color: "#161613" }}>
+        <div dir="rtl" style={{ padding: 24, fontFamily: "sans-serif", background: "#FBFBF9", minHeight: "100dvh", color: "#161613" }}>
           <h3 style={{ color: "#B4552D" }}>שגיאה בהרצת KetoMe {APP_VERSION}</h3>
           <pre style={{ whiteSpace: "pre-wrap", fontSize: 13, direction: "ltr", textAlign: "left" }}>
             {String(this.state.err && (this.state.err.message || this.state.err))}
@@ -1207,10 +1207,12 @@ function KetoApp() {
   const fileOverlay = { position: "absolute", inset: 0, width: "100%", height: "100%", opacity: 0, cursor: "pointer" };
 
   return (
-    <div dir="rtl" style={{ minHeight: "100vh", maxWidth: 520, margin: "0 auto", background: T.paper, color: T.ink, fontFamily: "'Assistant', sans-serif", display: "flex", flexDirection: "column", borderInline: `1px solid ${T.hair}` }}>
+    <div dir="rtl" style={{ minHeight: "100dvh", width: "100%", maxWidth: 520, margin: "0 auto", background: T.paper, color: T.ink, fontFamily: "'Assistant', sans-serif", display: "flex", flexDirection: "column", borderInline: `1px solid ${T.hair}`, overflowX: "hidden" }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@300;400;500&family=Assistant:wght@400;600;700&display=swap');
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        html { width: 100%; min-height: 100%; overflow-x: hidden; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+        body, #root { width: 100%; min-height: 100%; overflow-x: hidden; }
         html, body { margin: 0; background: ${themeMode === "dark" ? "#0E0F11" : "#F1F0EC"}; color-scheme: ${themeMode === "dark" ? "dark" : "light"}; }
         :root { color-scheme: ${themeMode === "dark" ? "dark" : "light"}; }
         input:focus { border-bottom-color: ${T.ink} !important; }
@@ -1223,7 +1225,7 @@ function KetoApp() {
         }
       `}</style>
 
-      <header style={{ padding: "22px 24px 0", maxWidth: 480, width: "100%", margin: "0 auto" }}>
+      <header style={{ padding: "calc(22px + env(safe-area-inset-top, 0px)) 24px 0", maxWidth: 480, width: "100%", margin: "0 auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
           <div style={{ fontFamily: "'Frank Ruhl Libre', serif", fontSize: 20 }}>KetoMe{profile.name.trim() ? ` · שלום, ${profile.name.trim()}` : ""}{pendingMeds.length > 0 && <span className="med-alert" style={{ fontSize: 12, fontFamily: "'Assistant', sans-serif", marginRight: 8 }}>● תרופה ממתינה</span>}{auth && <span style={{ fontSize: 12, color: T.accent, fontFamily: "'Assistant', sans-serif", marginRight: 8 }}>✓ {auth.user}</span>}{!auth && <button onClick={() => setTab("profile")} style={{ fontSize: 12, fontFamily: "'Assistant', sans-serif", marginRight: 8, background: "none", border: `1px solid ${T.hair}`, borderRadius: 999, padding: "3px 10px", color: T.muted, cursor: "pointer" }}>כניסה</button>}</div>
           <Label>{todayStr}</Label>
@@ -1837,7 +1839,7 @@ function KetoApp() {
 
       {/* ═══ פופ-אפ הוספת ארוחה — נגיש מ"סטטוס", חוזרים אליו מעודכן בסגירה ═══ */}
       {mealModalOpen && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(22,22,19,0.5)", zIndex: 50, display: "flex", alignItems: "flex-end", justifyContent: "center", padding: "18px 0 72px" }} onClick={() => setMealModalOpen(false)}>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(22,22,19,0.5)", zIndex: 50, display: "flex", alignItems: "flex-end", justifyContent: "center", padding: "calc(18px + env(safe-area-inset-top, 0px)) 0 calc(72px + env(safe-area-inset-bottom, 0px))" }} onClick={() => setMealModalOpen(false)}>
           <div onClick={(e) => e.stopPropagation()} style={{ background: T.paper, width: "calc(100% - 24px)", maxWidth: 480, margin: "0 auto", maxHeight: "82vh", overflowY: "auto", borderRadius: 18, padding: "18px 24px 28px", boxShadow: "0 12px 40px rgba(0,0,0,0.25)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
               <div style={{ fontFamily: "'Frank Ruhl Libre', serif", fontSize: 19 }}>הוספת ארוחה</div>
@@ -2001,7 +2003,7 @@ function KetoApp() {
         </div>
       )}
 
-      <nav style={{ position: "sticky", bottom: 0, background: T.paper, borderTop: `1px solid ${T.hair}` }}>
+      <nav style={{ position: "sticky", bottom: 0, zIndex: 20, width: "100%", background: T.paper, borderTop: `1px solid ${T.hair}`, paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
         <div style={{ maxWidth: 480, margin: "0 auto", display: "flex" }}>
           {[
             { id: "status", label: "סטטוס" },
