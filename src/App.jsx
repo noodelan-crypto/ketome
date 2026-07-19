@@ -24,7 +24,7 @@ const DARK_THEME = { paper: "#17181B", ink: "#F2F1ED", muted: "#9A9A95", hair: "
 /* T הוא משתנה מודולרי הניתן לשינוי — מתעדכן בתחילת כל רינדור של KetoApp לפי ערכת הנושא הנבחרת,
    כך שרכיבי עזר ברמת המודול (Ruler, Big, Label, Metric) תמיד רואים את הצבעים העדכניים */
 let T = LIGHT_THEME;
-const APP_VERSION = "1.6.1";
+const APP_VERSION = "1.9.0";
 
 /* כתובת השרת מוגדרת פעם אחת כאן ע"י המפתח (Cloudflare Worker) — לא ע"י המשתמש.
    כשריקה: הרשמה/סנכרון ענן מנוטרלים, וניתוח AI עובד ישירות (בסביבת התצוגה). */
@@ -71,6 +71,8 @@ const bpZone = (sys, dia) => {
   return { label: "תקין", color: T.accent };
 };
 const parseUric = (raw) => { const v = parseFloat(raw); return isNaN(v) ? null : v > 25 ? v / URIC_FACTOR : v; };
+/* סיסמה חדשה (הרשמה/איפוס): 8+ תווים, לפחות אות אחת וספרה אחת — מגן מפני סיסמאות חלשות מדי */
+const isStrongPass = (p) => p.length >= 8 && /[a-zA-Zא-ת]/.test(p) && /[0-9]/.test(p);
 const URINE_LEVELS = ["שלילי", "עקבות", "נמוך (1.5)", "בינוני (4)", "גבוה (8+)"];
 
 /* מאגר מזון (ל-100 גר׳) · u=גרם ליחידה, un=שם יחידה */
@@ -269,6 +271,7 @@ class ErrorBoundary extends React.Component {
 
 function KetoApp() {
   const [tab, setTab] = useState("status");
+  const [mealModalOpen, setMealModalOpen] = useState(false);
 
   /* פרופיל */
   const [profile, setProfile] = useState({ name: "", age: "30", height: "170", weight: "70", gender: "m", activity: "light", style: "standard", medical: "none" });
@@ -351,7 +354,22 @@ function KetoApp() {
       } catch { /* אין נתונים שמורים עדיין */ }
       try {
         const a = await window.storage.get("ketome-auth");
-        if (a?.value) setAuth(JSON.parse(a.value));
+        if (a?.value) {
+          const parsed = JSON.parse(a.value);
+          setAuth(parsed);
+          /* חשבון שהתחבר לפני שהוספנו מעקב hasEmail — בדיקה חד־פעמית מול השרת כדי לא להציג "אין אימייל" בטעות */
+          if (SERVER_URL && parsed.hasEmail === undefined) {
+            fetch(SERVER_URL.replace(/\/$/, "") + "/auth/me", {
+              method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: parsed.token }),
+            }).then((r) => r.json()).then((d) => {
+              if (d.ok) {
+                const updated = { ...parsed, hasEmail: !!d.hasEmail };
+                setAuth(updated);
+                window.storage.set("ketome-auth", JSON.stringify(updated)).catch(() => {});
+              }
+            }).catch(() => {});
+          }
+        }
       } catch { /* לא מחובר */ }
       setLoaded(true);
     })();
@@ -676,22 +694,30 @@ function KetoApp() {
   const doAuth = async (mode) => {
     setAuthMsg(null);
     if (!SERVER_URL) { setAuthMsg("בסביבת תצוגה זו אין שרת מחובר — הנתונים נשמרים במכשיר בלבד. בגרסה המלאה החיבור פועל אוטומטית."); return; }
-    if (authForm.user.trim().length < 2 || authForm.pass.length < 4) { setAuthMsg("שם משתמש (2+ תווים) וסיסמה (4+ תווים)"); return; }
+    if (authForm.user.trim().length < 2 || authForm.pass.length < 1) { setAuthMsg("שם משתמש ואת הסיסמה יש למלא"); return; }
+    if (mode === "register" && !isStrongPass(authForm.pass)) { setAuthMsg("הסיסמה חייבת לכלול 8+ תווים, עם לפחות אות אחת וספרה אחת"); return; }
     if (mode === "register" && (!authForm.email.trim() || !authForm.email.includes("@"))) { setAuthMsg("כתובת אימייל תקינה נדרשת"); return; }
     setAuthBusy(true);
     try {
       const payload = { user: authForm.user.trim(), pass: authForm.pass };
       if (mode === "register") payload.email = authForm.email.trim();
       const d = await api(mode === "register" ? "/auth/register" : "/auth/login", payload);
-      const a = { user: d.user, token: d.token };
+      const a = { user: d.user, token: d.token, hasEmail: mode === "register" ? true : !!d.hasEmail };
       setAuth(a);
       if (remember) await window.storage.set("ketome-auth", JSON.stringify(a)).catch(() => {});
       if (mode === "login") {
         try { const cloud = await api("/data/load", { token: d.token }); applyData(cloud); setAuthMsg("✓ מחובר — הנתונים נטענו מהענן"); }
         catch { setAuthMsg("✓ מחובר"); }
       } else {
-        await api("/data/save", { token: d.token, data: appData() }).catch(() => {});
-        setAuthMsg("✓ נרשמת והנתונים הנוכחיים גובו לענן");
+        /* חשבון חדש מתחיל נקי — לא לוקח איתו נתונים שהיו באפליקציה קודם (למשל נתוני בדיקה) */
+        setProfile({ name: "", age: "30", height: "170", weight: "70", gender: "m", activity: "light", style: "standard", medical: "none" });
+        setCarbLimit(50); setCalLimit(2000);
+        setWeights([]); setMeasurements([]); setMeals([]); setMeds([]); setLibreLogs([]);
+        await api("/data/save", { token: d.token, data: {
+          profile: { name: "", age: "30", height: "170", weight: "70", gender: "m", activity: "light", style: "standard", medical: "none" },
+          carbLimit: 50, calLimit: 2000, weights: [], measurements: [], meals: [], meds: [], libreLogs: [],
+        } }).catch(() => {});
+        setAuthMsg("✓ נרשמת בהצלחה — חשבון חדש ונקי");
       }
       setAuthForm({ user: "", pass: "", email: "" });
       setAuthMode("login");
@@ -742,7 +768,7 @@ function KetoApp() {
 
   const doResetPassword = async () => {
     setAuthMsg(null);
-    if (!forgotEmail.trim() || !resetCode.trim() || resetNewPass.length < 4) { setAuthMsg("נדרשים אימייל, קוד וסיסמה חדשה (4+ תווים)"); return; }
+    if (!forgotEmail.trim() || !resetCode.trim() || !isStrongPass(resetNewPass)) { setAuthMsg("נדרשים אימייל, קוד, וסיסמה חדשה של 8+ תווים עם אות וספרה"); return; }
     setAuthBusy(true);
     try {
       await api("/auth/reset-password", { email: forgotEmail.trim(), code: resetCode.trim(), newPass: resetNewPass });
@@ -759,6 +785,9 @@ function KetoApp() {
     setAuthBusy(true);
     try {
       await api("/auth/set-email", { token: auth.token, email: attachEmailValue.trim() });
+      const updated = { ...auth, hasEmail: true };
+      setAuth(updated);
+      if (remember) await window.storage.set("ketome-auth", JSON.stringify(updated)).catch(() => {});
       setAuthMsg("✓ האימייל צורף לחשבון");
       setAttachEmailValue("");
     } catch (e) { setAuthMsg(e.message); }
@@ -921,7 +950,7 @@ function KetoApp() {
             <section style={{ marginTop: 28 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <Label>ארוחות היום · {todayMeals.length}</Label>
-                <button style={{ ...btnGhost, padding: "6px 16px", fontSize: 13 }} onClick={() => setTab("meal")}>+ הוספת ארוחה</button>
+                <button style={{ ...btnGhost, padding: "6px 16px", fontSize: 13 }} onClick={() => setMealModalOpen(true)}>+ הוספת ארוחה</button>
               </div>
               {todayMeals.length === 0 && <div style={{ marginTop: 14, fontSize: 14, color: T.muted }}>עוד לא נרשמו ארוחות היום.</div>}
               {todayMeals.map((m) => (
@@ -939,165 +968,6 @@ function KetoApp() {
                   <button onClick={() => setMeals(meals.filter((x) => x.id !== m.id))} style={{ background: "transparent", border: "none", color: T.muted, cursor: "pointer", fontSize: 16, padding: 0 }}>×</button>
                 </div>
               ))}
-            </section>
-          </>
-        )}
-
-        {/* ═══ ארוחה ═══ */}
-        {tab === "meal" && (
-          <>
-            <section style={{ paddingTop: 26 }}>
-              <Label>תאריך הארוחה</Label>
-              <input type="date" value={mealDate} max={todayKey} onChange={(e) => setMealDate(e.target.value)} style={input({ marginTop: 4, maxWidth: 200 })} />
-            </section>
-
-            <section style={{ marginTop: 24 }}>
-              <Label>סריקת ארוחה עם AI</Label>
-              {!SERVER_URL && !HAS_NATIVE_STORAGE && (
-                <div style={{ marginTop: 8, fontSize: 13, color: T.warn, lineHeight: 1.7 }}>
-                  פיצ׳רי ה־AI (סריקה, שליפת ערכים, ליברה) יופעלו אחרי חיבור השרת — README שלבים 1–2.
-                  המאגר וההזנה הידנית עובדים כרגיל.
-                </div>
-              )}
-              <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
-                <div style={{ position: "relative", flex: 1 }}>
-                  <span style={{ ...btn, display: "block", textAlign: "center", opacity: analyzing ? 0.5 : 1 }}>📷 מצלמה</span>
-                  <input type="file" accept="image/*" capture="environment" disabled={analyzing} style={fileOverlay}
-                    onChange={(e) => { const f = e.target.files?.[0]; if (f) analyzePhoto(f); e.target.value = ""; }} />
-                </div>
-                <div style={{ position: "relative", flex: 1 }}>
-                  <span style={{ ...btnGhost, display: "block", textAlign: "center", opacity: analyzing ? 0.5 : 1 }}>🖼 גלריה</span>
-                  <input type="file" accept="image/*" disabled={analyzing} style={fileOverlay}
-                    onChange={(e) => { const f = e.target.files?.[0]; if (f) analyzePhoto(f); e.target.value = ""; }} />
-                </div>
-              </div>
-              {photoStatus && <div style={{ marginTop: 12, fontSize: 14, color: T.muted, animation: "pulse 1.4s infinite" }}>{photoStatus}</div>}
-              {photoError && <div style={{ marginTop: 12, fontSize: 14, color: T.warn, lineHeight: 1.6 }}>{photoError}</div>}
-              {photoResult && (
-                <div style={{ marginTop: 14, padding: "14px 0", borderTop: `1px solid ${T.ink}`, borderBottom: `1px solid ${T.hair}` }}>
-                  <div style={{ display: "flex", gap: 12 }}>
-                    <img src={photoResult.thumb} alt="" style={{ width: 60, height: 60, objectFit: "cover", border: `1px solid ${T.hair}` }} />
-                    <div style={{ flex: 1 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
-                        <b style={{ fontSize: 15.5 }}>{photoResult.data.name}</b>
-                        <span style={{ fontSize: 11.5, color: T.muted, whiteSpace: "nowrap" }}>צולם {timeOf(photoResult.ts)}</span>
-                      </div>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: photoResult.data.keto ? T.accent : T.warn }}>{photoResult.data.keto ? "מתאים לקיטו" : "לא מתאים לקיטו"}</div>
-                    </div>
-                  </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8, marginTop: 10 }}>
-                    <Metric label="פחמימות" value={fmt(+photoResult.data.carbs)} unit="גר׳" />
-                    <Metric label="קלוריות" value={fmt(+photoResult.data.cal)} unit="קל׳" />
-                    <Metric label="חלבון" value={fmt(+photoResult.data.protein)} unit="גר׳" />
-                    <Metric label="שומן" value={fmt(+photoResult.data.fat)} unit="גר׳" />
-                  </div>
-                  {photoResult.data.note && <p style={{ margin: "8px 0 0", fontSize: 13, color: T.muted }}>{photoResult.data.note}</p>}
-                  <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
-                    <button style={{ ...btn, padding: "8px 20px" }} onClick={acceptPhoto}>הוסף לארוחה</button>
-                    <button style={{ background: "none", border: "none", color: T.muted, fontSize: 14, cursor: "pointer" }} onClick={() => setPhotoResult(null)}>ביטול</button>
-                  </div>
-                </div>
-              )}
-            </section>
-
-            <section style={{ marginTop: 26 }}>
-              <div style={{ display: "flex", gap: 10 }}>
-                <button style={foodOpen ? btn : btnGhost} onClick={() => { setFoodOpen(!foodOpen); setAdding(false); }}>🔎 מהמאגר</button>
-                <button style={adding ? btn : btnGhost} onClick={() => { setAdding(!adding); setFoodOpen(false); }}>✎ ידני / AI</button>
-              </div>
-
-              {foodOpen && (
-                <div style={{ marginTop: 14 }}>
-                  <input autoFocus placeholder="חיפוש מזון…" value={foodQuery} onChange={(e) => { setFoodQuery(e.target.value); setSelectedFood(null); }} style={input()} />
-                  {!selectedFood && searchFood(foodQuery).map((f) => (
-                    <button key={f.n} onClick={() => pickFood(f)} style={{ display: "flex", width: "100%", justifyContent: "space-between", gap: 8, padding: "10px 0", background: "none", border: "none", borderBottom: `1px solid ${T.hair}`, cursor: "pointer", textAlign: "right" }}>
-                      <span style={{ fontSize: 14.5, color: T.ink }}>{f.n}</span>
-                      <span style={{ fontSize: 12, color: T.muted, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>{fmt(f.c)} פחמ׳ / 100 גר׳</span>
-                    </button>
-                  ))}
-                  {!selectedFood && foodQuery.trim() && searchFood(foodQuery).length === 0 && (
-                    <div style={{ padding: "12px 0" }}>
-                      <div style={{ fontSize: 13.5, color: T.muted }}>"{foodQuery}" לא נמצא במאגר המקומי.</div>
-                      <button style={{ ...btnGhost, marginTop: 10, padding: "7px 16px", fontSize: 13 }}
-                        onClick={() => { const q = foodQuery; setFoodOpen(false); setAdding(true); setForm({ name: q, carbs: "", cal: "", protein: "", fat: "" }); lookupFood(q); }}>
-                        ✳ שליפה עם AI: "{foodQuery}"
-                      </button>
-                    </div>
-                  )}
-                  {selectedFood && (() => {
-                    const g = foodTotalG(), r = g / 100, f = selectedFood;
-                    return (
-                      <div style={{ marginTop: 10, paddingBottom: 14, borderBottom: `1px solid ${T.hair}` }}>
-                        <div style={{ fontSize: 16, fontWeight: 700 }}>{f.n}</div>
-                        <div style={{ fontSize: 12.5, color: T.muted, marginTop: 2 }}>{fmt(f.c)} גר׳ פחמימות ל־100 גר׳</div>
-                        <Label style={{ marginTop: 14, marginBottom: 8 }}>יחידת הגשה</Label>
-                        <div style={{ display: "flex", gap: 8 }}>
-                          <button style={pill(byUnit)} onClick={() => setByUnit(true)}>{f.un} ({f.u} גר׳)</button>
-                          <button style={pill(!byUnit)} onClick={() => setByUnit(false)}>גרמים</button>
-                        </div>
-                        {byUnit ? (
-                          <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 16 }}>
-                            <Label>כמות</Label>
-                            <button style={stepBtn} onClick={() => setQty(Math.max(1, qty - 1))}>−</button>
-                            <Big size={30}>{qty}</Big>
-                            <button style={stepBtn} onClick={() => setQty(qty + 1)}>+</button>
-                            <span style={{ fontSize: 13, color: T.muted, fontVariantNumeric: "tabular-nums" }}>= {fmt(g)} גר׳</span>
-                          </div>
-                        ) : (
-                          <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginTop: 12 }}>
-                            <input inputMode="decimal" value={gramsIn} onChange={(e) => setGramsIn(e.target.value)} style={input({ width: 90 })} />
-                            <span style={{ fontSize: 13, color: T.muted }}>גרם</span>
-                          </div>
-                        )}
-                        <div style={{ marginTop: 14, fontSize: 14, fontVariantNumeric: "tabular-nums" }}>
-                          פחמימות לארוחה: <Big size={26} color={T.accent}>{fmt(f.c * r)}</Big> <span style={{ fontSize: 12, color: T.muted }}>גר׳</span>
-                          <span style={{ fontSize: 12.5, color: T.muted, marginRight: 12 }}>{fmt(Math.round(f.k * r))} קל׳ · {fmt(f.p * r)} חלבון · {fmt(f.f * r)} שומן</span>
-                        </div>
-                        <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
-                          <button style={{ ...btn, padding: "8px 20px" }} onClick={addFromDB}>+ הוסף לארוחה</button>
-                          <button style={{ background: "none", border: "none", color: T.muted, fontSize: 14, cursor: "pointer" }} onClick={() => setSelectedFood(null)}>חזרה</button>
-                        </div>
-                      </div>
-                    );
-                  })()}
-                </div>
-              )}
-
-              {adding && (
-                <div style={{ marginTop: 14, paddingBottom: 16, borderBottom: `1px solid ${T.hair}` }}>
-                  <input autoFocus placeholder="מה אכלת? (למשל: 2 פרוסות גבינה צהובה)" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} style={input()} />
-                  <button style={{ ...btnGhost, marginTop: 10, padding: "7px 16px", fontSize: 13 }} onClick={lookupFood} disabled={lookupBusy}>
-                    {lookupBusy ? "שולף ערכים…" : "✳ שליפת ערכים אוטומטית"}
-                  </button>
-                  {lookupErr && <div style={{ marginTop: 8, fontSize: 13, color: T.warn }}>{lookupErr}</div>}
-                  <div style={{ display: "flex", gap: 16 }}>
-                    <input placeholder="פחמימות (גר׳)" inputMode="decimal" value={form.carbs} onChange={(e) => setForm({ ...form, carbs: e.target.value })} style={input()} />
-                    <input placeholder="קלוריות" inputMode="decimal" value={form.cal} onChange={(e) => setForm({ ...form, cal: e.target.value })} style={input()} />
-                  </div>
-                  <div style={{ display: "flex", gap: 16 }}>
-                    <input placeholder="חלבון (גר׳)" inputMode="decimal" value={form.protein} onChange={(e) => setForm({ ...form, protein: e.target.value })} style={input()} />
-                    <input placeholder="שומן (גר׳)" inputMode="decimal" value={form.fat} onChange={(e) => setForm({ ...form, fat: e.target.value })} style={input()} />
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 14 }}>
-                    <Label>כמות</Label>
-                    <button style={stepBtn} onClick={() => setFormQty(Math.max(1, formQty - 1))}>−</button>
-                    <Big size={26}>{formQty}</Big>
-                    <button style={stepBtn} onClick={() => setFormQty(formQty + 1)}>+</button>
-                    {formQty > 1 && (
-                      <span style={{ fontSize: 13, color: T.muted, fontVariantNumeric: "tabular-nums" }}>
-                        = {fmt((parseFloat(form.carbs) || 0) * formQty)} פחמ׳ · {fmt(Math.round((parseFloat(form.cal) || 0) * formQty))} קל׳
-                      </span>
-                    )}
-                  </div>
-                  <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
-                    <button style={{ ...btn, padding: "8px 20px" }} onClick={addMeal}>שמירה</button>
-                    <button style={{ background: "none", border: "none", color: T.muted, fontSize: 14, cursor: "pointer" }} onClick={() => setAdding(false)}>ביטול</button>
-                  </div>
-                </div>
-              )}
-              <div style={{ marginTop: 12, fontSize: 12, color: T.muted }}>
-                למתכונים מורכבים: <a href="http://www.capit.co.il/recipe-calculator" target="_blank" rel="noreferrer" style={{ color: T.accent }}>מחשבון כפית ↗</a>
-              </div>
             </section>
           </>
         )}
@@ -1509,6 +1379,7 @@ function KetoApp() {
                         onChange={(e) => setAuthForm({ ...authForm, email: e.target.value })} style={input()} />
                       <input placeholder="סיסמה" type="password" autoComplete="new-password" value={authForm.pass}
                         onChange={(e) => setAuthForm({ ...authForm, pass: e.target.value })} style={input()} />
+                      <div style={{ fontSize: 11.5, color: T.muted, marginTop: 4 }}>8+ תווים, עם לפחות אות אחת וספרה אחת</div>
                       <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
                         <button style={{ ...btn, flex: 1, padding: "10px 0" }} disabled={authBusy} onClick={() => doAuth("register")}>הרשמה</button>
                         <button style={{ background: "none", border: "none", color: T.muted, fontSize: 13.5, cursor: "pointer" }} onClick={() => setAuthMode("login")}>חזרה להתחברות</button>
@@ -1560,16 +1431,22 @@ function KetoApp() {
                   </div>
                   <button style={{ background: "none", border: "none", color: T.muted, fontSize: 13, cursor: "pointer", marginTop: 10, padding: 0 }} onClick={logout}>התנתקות</button>
 
-                  <div style={{ marginTop: 18, padding: "12px 0", borderTop: `1px solid ${T.hair}` }}>
-                    <div style={{ fontSize: 13, color: T.muted, marginBottom: 8 }}>
-                      לא רשום אימייל לחשבון זה — נדרש לשחזור סיסמה/שם משתמש עתידי:
+                  {auth.hasEmail ? (
+                    <div style={{ marginTop: 18, padding: "10px 0", borderTop: `1px solid ${T.hair}`, fontSize: 12.5, color: T.accent }}>
+                      ✓ יש אימייל רשום לחשבון — שחזור סיסמה/שם משתמש זמין
                     </div>
-                    <div style={{ display: "flex", gap: 10 }}>
-                      <input placeholder="הוסף אימייל לחשבון" type="email" value={attachEmailValue}
-                        onChange={(e) => setAttachEmailValue(e.target.value)} style={input({ flex: 1 })} />
-                      <button style={{ ...btnGhost, padding: "8px 18px", fontSize: 13 }} disabled={authBusy} onClick={attachEmail}>שמירה</button>
+                  ) : (
+                    <div style={{ marginTop: 18, padding: "12px 0", borderTop: `1px solid ${T.hair}` }}>
+                      <div style={{ fontSize: 13, color: T.muted, marginBottom: 8 }}>
+                        לא רשום אימייל לחשבון זה — נדרש לשחזור סיסמה/שם משתמש עתידי:
+                      </div>
+                      <div style={{ display: "flex", gap: 10 }}>
+                        <input placeholder="הוסף אימייל לחשבון" type="email" value={attachEmailValue}
+                          onChange={(e) => setAttachEmailValue(e.target.value)} style={input({ flex: 1 })} />
+                        <button style={{ ...btnGhost, padding: "8px 18px", fontSize: 13 }} disabled={authBusy} onClick={attachEmail}>שמירה</button>
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
               )}
               {authMsg && (
@@ -1618,11 +1495,176 @@ function KetoApp() {
         )}
       </main>
 
+      {/* ═══ פופ-אפ הוספת ארוחה — נגיש מ"סטטוס", חוזרים אליו מעודכן בסגירה ═══ */}
+      {mealModalOpen && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(22,22,19,0.5)", zIndex: 50, display: "flex", alignItems: "flex-end" }} onClick={() => setMealModalOpen(false)}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: T.paper, width: "100%", maxWidth: 480, margin: "0 auto", maxHeight: "88vh", overflowY: "auto", borderRadius: "18px 18px 0 0", padding: "18px 24px 28px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+              <div style={{ fontFamily: "'Frank Ruhl Libre', serif", fontSize: 19 }}>הוספת ארוחה</div>
+              <button onClick={() => setMealModalOpen(false)} aria-label="סגירה"
+                style={{ background: "none", border: "none", color: T.muted, fontSize: 22, cursor: "pointer", padding: 0, lineHeight: 1 }}>×</button>
+            </div>
+<section style={{ paddingTop: 26 }}>
+              <Label>תאריך הארוחה</Label>
+              <input type="date" value={mealDate} max={todayKey} onChange={(e) => setMealDate(e.target.value)} style={input({ marginTop: 4, maxWidth: 200 })} />
+            </section>
+
+            <section style={{ marginTop: 24 }}>
+              <Label>סריקת ארוחה עם AI</Label>
+              {!SERVER_URL && !HAS_NATIVE_STORAGE && (
+                <div style={{ marginTop: 8, fontSize: 13, color: T.warn, lineHeight: 1.7 }}>
+                  פיצ׳רי ה־AI (סריקה, שליפת ערכים, ליברה) יופעלו אחרי חיבור השרת — README שלבים 1–2.
+                  המאגר וההזנה הידנית עובדים כרגיל.
+                </div>
+              )}
+              <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
+                <div style={{ position: "relative", flex: 1 }}>
+                  <span style={{ ...btn, display: "block", textAlign: "center", opacity: analyzing ? 0.5 : 1 }}>📷 מצלמה</span>
+                  <input type="file" accept="image/*" capture="environment" disabled={analyzing} style={fileOverlay}
+                    onChange={(e) => { const f = e.target.files?.[0]; if (f) analyzePhoto(f); e.target.value = ""; }} />
+                </div>
+                <div style={{ position: "relative", flex: 1 }}>
+                  <span style={{ ...btnGhost, display: "block", textAlign: "center", opacity: analyzing ? 0.5 : 1 }}>🖼 גלריה</span>
+                  <input type="file" accept="image/*" disabled={analyzing} style={fileOverlay}
+                    onChange={(e) => { const f = e.target.files?.[0]; if (f) analyzePhoto(f); e.target.value = ""; }} />
+                </div>
+              </div>
+              {photoStatus && <div style={{ marginTop: 12, fontSize: 14, color: T.muted, animation: "pulse 1.4s infinite" }}>{photoStatus}</div>}
+              {photoError && <div style={{ marginTop: 12, fontSize: 14, color: T.warn, lineHeight: 1.6 }}>{photoError}</div>}
+              {photoResult && (
+                <div style={{ marginTop: 14, padding: "14px 0", borderTop: `1px solid ${T.ink}`, borderBottom: `1px solid ${T.hair}` }}>
+                  <div style={{ display: "flex", gap: 12 }}>
+                    <img src={photoResult.thumb} alt="" style={{ width: 60, height: 60, objectFit: "cover", border: `1px solid ${T.hair}` }} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
+                        <b style={{ fontSize: 15.5 }}>{photoResult.data.name}</b>
+                        <span style={{ fontSize: 11.5, color: T.muted, whiteSpace: "nowrap" }}>צולם {timeOf(photoResult.ts)}</span>
+                      </div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: photoResult.data.keto ? T.accent : T.warn }}>{photoResult.data.keto ? "מתאים לקיטו" : "לא מתאים לקיטו"}</div>
+                    </div>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8, marginTop: 10 }}>
+                    <Metric label="פחמימות" value={fmt(+photoResult.data.carbs)} unit="גר׳" />
+                    <Metric label="קלוריות" value={fmt(+photoResult.data.cal)} unit="קל׳" />
+                    <Metric label="חלבון" value={fmt(+photoResult.data.protein)} unit="גר׳" />
+                    <Metric label="שומן" value={fmt(+photoResult.data.fat)} unit="גר׳" />
+                  </div>
+                  {photoResult.data.note && <p style={{ margin: "8px 0 0", fontSize: 13, color: T.muted }}>{photoResult.data.note}</p>}
+                  <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
+                    <button style={{ ...btn, padding: "8px 20px" }} onClick={acceptPhoto}>הוסף לארוחה</button>
+                    <button style={{ background: "none", border: "none", color: T.muted, fontSize: 14, cursor: "pointer" }} onClick={() => setPhotoResult(null)}>ביטול</button>
+                  </div>
+                </div>
+              )}
+            </section>
+
+            <section style={{ marginTop: 26 }}>
+              <div style={{ display: "flex", gap: 10 }}>
+                <button style={foodOpen ? btn : btnGhost} onClick={() => { setFoodOpen(!foodOpen); setAdding(false); }}>🔎 מהמאגר</button>
+                <button style={adding ? btn : btnGhost} onClick={() => { setAdding(!adding); setFoodOpen(false); }}>✎ ידני / AI</button>
+              </div>
+
+              {foodOpen && (
+                <div style={{ marginTop: 14 }}>
+                  <input autoFocus placeholder="חיפוש מזון…" value={foodQuery} onChange={(e) => { setFoodQuery(e.target.value); setSelectedFood(null); }} style={input()} />
+                  {!selectedFood && searchFood(foodQuery).map((f) => (
+                    <button key={f.n} onClick={() => pickFood(f)} style={{ display: "flex", width: "100%", justifyContent: "space-between", gap: 8, padding: "10px 0", background: "none", border: "none", borderBottom: `1px solid ${T.hair}`, cursor: "pointer", textAlign: "right" }}>
+                      <span style={{ fontSize: 14.5, color: T.ink }}>{f.n}</span>
+                      <span style={{ fontSize: 12, color: T.muted, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>{fmt(f.c)} פחמ׳ / 100 גר׳</span>
+                    </button>
+                  ))}
+                  {!selectedFood && foodQuery.trim() && searchFood(foodQuery).length === 0 && (
+                    <div style={{ padding: "12px 0" }}>
+                      <div style={{ fontSize: 13.5, color: T.muted }}>"{foodQuery}" לא נמצא במאגר המקומי.</div>
+                      <button style={{ ...btnGhost, marginTop: 10, padding: "7px 16px", fontSize: 13 }}
+                        onClick={() => { const q = foodQuery; setFoodOpen(false); setAdding(true); setForm({ name: q, carbs: "", cal: "", protein: "", fat: "" }); lookupFood(q); }}>
+                        ✳ שליפה עם AI: "{foodQuery}"
+                      </button>
+                    </div>
+                  )}
+                  {selectedFood && (() => {
+                    const g = foodTotalG(), r = g / 100, f = selectedFood;
+                    return (
+                      <div style={{ marginTop: 10, paddingBottom: 14, borderBottom: `1px solid ${T.hair}` }}>
+                        <div style={{ fontSize: 16, fontWeight: 700 }}>{f.n}</div>
+                        <div style={{ fontSize: 12.5, color: T.muted, marginTop: 2 }}>{fmt(f.c)} גר׳ פחמימות ל־100 גר׳</div>
+                        <Label style={{ marginTop: 14, marginBottom: 8 }}>יחידת הגשה</Label>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <button style={pill(byUnit)} onClick={() => setByUnit(true)}>{f.un} ({f.u} גר׳)</button>
+                          <button style={pill(!byUnit)} onClick={() => setByUnit(false)}>גרמים</button>
+                        </div>
+                        {byUnit ? (
+                          <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 16 }}>
+                            <Label>כמות</Label>
+                            <button style={stepBtn} onClick={() => setQty(Math.max(1, qty - 1))}>−</button>
+                            <Big size={30}>{qty}</Big>
+                            <button style={stepBtn} onClick={() => setQty(qty + 1)}>+</button>
+                            <span style={{ fontSize: 13, color: T.muted, fontVariantNumeric: "tabular-nums" }}>= {fmt(g)} גר׳</span>
+                          </div>
+                        ) : (
+                          <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginTop: 12 }}>
+                            <input inputMode="decimal" value={gramsIn} onChange={(e) => setGramsIn(e.target.value)} style={input({ width: 90 })} />
+                            <span style={{ fontSize: 13, color: T.muted }}>גרם</span>
+                          </div>
+                        )}
+                        <div style={{ marginTop: 14, fontSize: 14, fontVariantNumeric: "tabular-nums" }}>
+                          פחמימות לארוחה: <Big size={26} color={T.accent}>{fmt(f.c * r)}</Big> <span style={{ fontSize: 12, color: T.muted }}>גר׳</span>
+                          <span style={{ fontSize: 12.5, color: T.muted, marginRight: 12 }}>{fmt(Math.round(f.k * r))} קל׳ · {fmt(f.p * r)} חלבון · {fmt(f.f * r)} שומן</span>
+                        </div>
+                        <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
+                          <button style={{ ...btn, padding: "8px 20px" }} onClick={addFromDB}>+ הוסף לארוחה</button>
+                          <button style={{ background: "none", border: "none", color: T.muted, fontSize: 14, cursor: "pointer" }} onClick={() => setSelectedFood(null)}>חזרה</button>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+
+              {adding && (
+                <div style={{ marginTop: 14, paddingBottom: 16, borderBottom: `1px solid ${T.hair}` }}>
+                  <input autoFocus placeholder="מה אכלת? (למשל: 2 פרוסות גבינה צהובה)" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} style={input()} />
+                  <button style={{ ...btnGhost, marginTop: 10, padding: "7px 16px", fontSize: 13 }} onClick={lookupFood} disabled={lookupBusy}>
+                    {lookupBusy ? "שולף ערכים…" : "✳ שליפת ערכים אוטומטית"}
+                  </button>
+                  {lookupErr && <div style={{ marginTop: 8, fontSize: 13, color: T.warn }}>{lookupErr}</div>}
+                  <div style={{ display: "flex", gap: 16 }}>
+                    <input placeholder="פחמימות (גר׳)" inputMode="decimal" value={form.carbs} onChange={(e) => setForm({ ...form, carbs: e.target.value })} style={input()} />
+                    <input placeholder="קלוריות" inputMode="decimal" value={form.cal} onChange={(e) => setForm({ ...form, cal: e.target.value })} style={input()} />
+                  </div>
+                  <div style={{ display: "flex", gap: 16 }}>
+                    <input placeholder="חלבון (גר׳)" inputMode="decimal" value={form.protein} onChange={(e) => setForm({ ...form, protein: e.target.value })} style={input()} />
+                    <input placeholder="שומן (גר׳)" inputMode="decimal" value={form.fat} onChange={(e) => setForm({ ...form, fat: e.target.value })} style={input()} />
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 14 }}>
+                    <Label>כמות</Label>
+                    <button style={stepBtn} onClick={() => setFormQty(Math.max(1, formQty - 1))}>−</button>
+                    <Big size={26}>{formQty}</Big>
+                    <button style={stepBtn} onClick={() => setFormQty(formQty + 1)}>+</button>
+                    {formQty > 1 && (
+                      <span style={{ fontSize: 13, color: T.muted, fontVariantNumeric: "tabular-nums" }}>
+                        = {fmt((parseFloat(form.carbs) || 0) * formQty)} פחמ׳ · {fmt(Math.round((parseFloat(form.cal) || 0) * formQty))} קל׳
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
+                    <button style={{ ...btn, padding: "8px 20px" }} onClick={addMeal}>שמירה</button>
+                    <button style={{ background: "none", border: "none", color: T.muted, fontSize: 14, cursor: "pointer" }} onClick={() => setAdding(false)}>ביטול</button>
+                  </div>
+                </div>
+              )}
+              <div style={{ marginTop: 12, fontSize: 12, color: T.muted }}>
+                למתכונים מורכבים: <a href="http://www.capit.co.il/recipe-calculator" target="_blank" rel="noreferrer" style={{ color: T.accent }}>מחשבון כפית ↗</a>
+              </div>
+            </section>
+          </div>
+        </div>
+      )}
+
       <nav style={{ position: "sticky", bottom: 0, background: T.paper, borderTop: `1px solid ${T.hair}` }}>
         <div style={{ maxWidth: 480, margin: "0 auto", display: "flex" }}>
           {[
             { id: "status", label: "סטטוס" },
-            { id: "meal", label: "ארוחה" },
             { id: "measure", label: "מדידות" },
             { id: "meds", label: "תרופות", alert: pendingMeds.length > 0 },
             { id: "history", label: "היסטוריה" },
