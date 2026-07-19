@@ -18,13 +18,13 @@ if (typeof window !== "undefined" && !window.storage) {
   };
 }
 
-/* ═══ KetoMe · v3.2.0 · עיצוב מינימליסטי ═══ */
+/* ═══ KetoMe · v1.9.4 · עיצוב מינימליסטי ═══ */
 const LIGHT_THEME = { paper: "#FBFBF9", ink: "#161613", muted: "#8B8A83", hair: "#E7E5DF", accent: "#0F6B5C", warn: "#B4552D", mid: "#C99A2E" };
 const DARK_THEME = { paper: "#17181B", ink: "#F2F1ED", muted: "#9A9A95", hair: "#2E2F33", accent: "#3ED9A0", warn: "#E5906B", mid: "#E3C767" };
 /* T הוא משתנה מודולרי הניתן לשינוי — מתעדכן בתחילת כל רינדור של KetoApp לפי ערכת הנושא הנבחרת,
    כך שרכיבי עזר ברמת המודול (Ruler, Big, Label, Metric) תמיד רואים את הצבעים העדכניים */
 let T = LIGHT_THEME;
-const APP_VERSION = "1.9.3";
+const APP_VERSION = "1.9.4";
 
 /* כתובת השרת מוגדרת פעם אחת כאן ע"י המפתח (Cloudflare Worker) — לא ע"י המשתמש.
    כשריקה: הרשמה/סנכרון ענן מנוטרלים, וניתוח AI עובד ישירות (בסביבת התצוגה). */
@@ -287,11 +287,15 @@ function KetoApp() {
   const [remember, setRemember] = useState(true);
   const [authMsg, setAuthMsg] = useState(null);
   const [authBusy, setAuthBusy] = useState(false);
+  const [cloudStatus, setCloudStatus] = useState(null);
   const [loaded, setLoaded] = useState(false);
   /* מונע מטיימרי שמירה ישנים להחזיר נתונים לאחר התנתקות */
   const localSaveTimerRef = useRef(null);
   const cloudSaveTimerRef = useRef(null);
   const logoutInProgressRef = useRef(false);
+  /* בזמן טעינה מהענן אסור לשמירה האוטומטית לדרוס את הענן בנתונים מקומיים חלקיים */
+  const cloudHydratingRef = useRef(false);
+  const cloudSessionReadyRef = useRef(false);
   const [themeMode, setThemeMode] = useState("light"); // "light" | "dark"
   T = themeMode === "dark" ? DARK_THEME : LIGHT_THEME; // עדכון המשתנה המודולרי לפני הרינדור
 
@@ -343,6 +347,18 @@ function KetoApp() {
     let cancelled = false;
 
     (async () => {
+      /* העדפות ההתחברות נשמרות בנפרד מהחשבון ומהנתונים.
+         כך שם המשתמש והבחירה "זכור אותי" נשארים גם אחרי התנתקות, בלי לשמור סיסמה בקוד. */
+      try {
+        const prefsResult = await window.storage.get("ketome-login-prefs");
+        if (prefsResult?.value && !cancelled) {
+          const prefs = JSON.parse(prefsResult.value);
+          const shouldRemember = prefs.remember !== false;
+          setRemember(shouldRemember);
+          setAuthForm((prev) => ({ ...prev, user: shouldRemember ? (prefs.user || "") : "" }));
+        }
+      } catch { /* אין העדפות שמורות */ }
+
       try {
         /* סמן זה נכתב לפני התנתקות. אם הדף נטען מחדש בזמן שטיימר ישן עוד היה פעיל,
            מתעלמים מכל מידע קודם ומתחילים ממצב נקי. */
@@ -370,6 +386,8 @@ function KetoApp() {
             setLibreLogs([]);
             setThemeMode("light");
             setAuth(null);
+            setCloudStatus(null);
+            cloudSessionReadyRef.current = false;
             setLoaded(true);
           }
           return;
@@ -392,31 +410,67 @@ function KetoApp() {
         }
       } catch { /* אין נתונים שמורים עדיין */ }
 
+      let storedAuth = null;
       try {
         const a = await window.storage.get("ketome-auth");
-        if (a?.value && !cancelled) {
-          const parsed = JSON.parse(a.value);
-          setAuth(parsed);
-          /* חשבון שהתחבר לפני שהוספנו מעקב hasEmail — בדיקה חד־פעמית מול השרת */
-          if (SERVER_URL && parsed.hasEmail === undefined) {
-            fetch(SERVER_URL.replace(/\/$/, "") + "/auth/me", {
-              method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: parsed.token }),
-            }).then((r) => r.json()).then((d) => {
-              if (d.ok && !cancelled) {
-                const updated = { ...parsed, hasEmail: !!d.hasEmail };
-                setAuth(updated);
-                window.storage.set("ketome-auth", JSON.stringify(updated)).catch(() => {});
-              }
-            }).catch(() => {});
-          }
-        }
+        if (a?.value && !cancelled) storedAuth = JSON.parse(a.value);
       } catch { /* לא מחובר */ }
+
+      if (storedAuth && !cancelled) {
+        cloudHydratingRef.current = true;
+        cloudSessionReadyRef.current = false;
+        setAuth(storedAuth);
+
+        let updatedAuth = { ...storedAuth, hasEmail: storedAuth.hasEmail ?? null };
+
+        /* מאמתים בכל פתיחה את מצב האימייל מול השרת.
+           לא מסתמכים על hasEmail ישן או חסר מתשובת login. */
+        try {
+          const me = await api("/auth/me", { token: storedAuth.token });
+          updatedAuth = {
+            ...updatedAuth,
+            user: me.user || updatedAuth.user,
+            hasEmail: !!me.hasEmail,
+            email: me.email || updatedAuth.email || null,
+          };
+          if (!cancelled) setAuth(updatedAuth);
+          await window.storage.set("ketome-auth", JSON.stringify(updatedAuth)).catch(() => {});
+        } catch {
+          /* אם בדיקת האימייל נכשלה לא מציגים בטעות שהאימייל חסר */
+          updatedAuth = { ...updatedAuth, hasEmail: updatedAuth.hasEmail ?? null };
+          if (!cancelled) setAuth(updatedAuth);
+        }
+
+        /* התחברות שמורה טוענת את תמונת הענן המלאה.
+           החלפה מלאה מונעת מצב שבו חלק מהנתונים נשארים מקומיים וחלק נטענים מהענן. */
+        try {
+          const cloud = await api("/data/load", { token: storedAuth.token });
+          const normalized = replaceDataFromCloud(cloud);
+          await persistLocalSnapshot(normalized);
+          if (!cancelled) setCloudStatus(`✓ נטען מהענן אוטומטית · ${summarizeData(normalized)}`);
+        } catch (e) {
+          if (!cancelled) setCloudStatus(`החיבור לענן לא הושלם: ${e.message}`);
+        } finally {
+          cloudHydratingRef.current = false;
+          cloudSessionReadyRef.current = true;
+        }
+      }
 
       if (!cancelled) setLoaded(true);
     })();
 
     return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /* שומר שם משתמש והעדפת "זכור אותי" בלבד. הסיסמה לעולם אינה נשמרת ב-window.storage. */
+  useEffect(() => {
+    if (!loaded || auth) return;
+    window.storage.set("ketome-login-prefs", JSON.stringify({
+      user: remember ? authForm.user.trim() : "",
+      remember,
+    })).catch(() => {});
+  }, [loaded, auth, remember, authForm.user]);
 
   /* ─ שמירה אוטומטית מקומית על כל שינוי ─ */
   useEffect(() => {
@@ -444,12 +498,12 @@ function KetoApp() {
 
   /* ─ גיבוי אוטומטי לענן — לא פועל בזמן התנתקות ─ */
   useEffect(() => {
-    if (!loaded || !auth || !SERVER_URL || logoutInProgressRef.current) return undefined;
+    if (!loaded || !auth || !SERVER_URL || logoutInProgressRef.current || cloudHydratingRef.current || !cloudSessionReadyRef.current) return undefined;
 
     if (cloudSaveTimerRef.current) clearTimeout(cloudSaveTimerRef.current);
 
     cloudSaveTimerRef.current = setTimeout(() => {
-      if (logoutInProgressRef.current) return;
+      if (logoutInProgressRef.current || cloudHydratingRef.current || !cloudSessionReadyRef.current) return;
       fetch(SERVER_URL.replace(/\/$/, "") + "/data/save", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token: auth.token, data: appData() }),
@@ -728,81 +782,196 @@ function KetoApp() {
       return d;
     });
 
-  const appData = () => ({ profile, carbLimit, calLimit, weights, measurements, meds, libreLogs, meals: meals.map(({ thumb, ...m }) => m) });
+  const defaultProfile = () => ({
+    name: "", age: "30", height: "170", weight: "70",
+    gender: "m", activity: "light", style: "standard", medical: "none",
+  });
 
-  /* מיזוג במקום דריסה: כל רשומה (לפי id, או ts כשאין id) משתי הרשימות נשמרת —
-     כך התחברות ממכשיר אחר לעולם לא "מוחקת" נתונים שנוספו במכשיר הזה ולא הספיקו להתגבות */
-  const mergeByKey = (localArr, cloudArr, keyFn) => {
-    const map = new Map();
-    (cloudArr || []).forEach((item) => map.set(keyFn(item), item));
-    (localArr || []).forEach((item) => map.set(keyFn(item), item)); // המקומי גובר בהתנגשות מפתח
-    return [...map.values()].sort((a, b) => (a.ts ?? 0) - (b.ts ?? 0));
+  const appData = () => ({
+    profile, carbLimit, calLimit, weights, measurements, meds, libreLogs, themeMode,
+    meals: meals.map(({ thumb, ...m }) => m),
+    updatedAt: Date.now(),
+    appVersion: APP_VERSION,
+  });
+
+  const normalizeCloudData = (d) => ({
+    profile: d?.profile || defaultProfile(),
+    carbLimit: d?.carbLimit != null ? d.carbLimit : 50,
+    calLimit: d?.calLimit != null ? d.calLimit : 2000,
+    weights: Array.isArray(d?.weights) ? d.weights : [],
+    measurements: Array.isArray(d?.measurements) ? d.measurements : [],
+    meals: Array.isArray(d?.meals) ? d.meals : [],
+    meds: Array.isArray(d?.meds) ? d.meds : [],
+    libreLogs: Array.isArray(d?.libreLogs) ? d.libreLogs : [],
+    themeMode: d?.themeMode === "dark" ? "dark" : "light",
+    updatedAt: d?.updatedAt || null,
+    appVersion: d?.appVersion || null,
+  });
+
+  const summarizeData = (d) => {
+    const n = normalizeCloudData(d);
+    return `${n.meals.length} ארוחות · ${n.measurements.length} מדידות · ${n.weights.length} משקלים · ${n.meds.length} תרופות · ${n.libreLogs.length} רשומות ליברה`;
   };
 
-  const applyData = (d) => {
-    /* הגדרות סקלריות (פרופיל/יעדים): רק אם עדיין לא נטענו נתונים מקומיים משמעותיים */
-    const looksEmpty = meals.length === 0 && measurements.length === 0 && weights.length === 0 && meds.length === 0;
-    if (looksEmpty) {
-      if (d.profile) setProfile(d.profile);
-      if (d.carbLimit) setCarbLimit(d.carbLimit);
-      if (d.calLimit) setCalLimit(d.calLimit);
-    }
-    if (d.meals) setMeals((prev) => mergeByKey(prev.map(({ thumb, ...m }) => m), d.meals, (m) => m.id));
-    if (d.measurements) setMeasurements((prev) => mergeByKey(prev, d.measurements, (m) => m.id));
-    if (d.weights) setWeights((prev) => mergeByKey(prev, d.weights, (w) => w.ts));
-    if (d.meds) setMeds((prev) => mergeByKey(prev, d.meds, (m) => m.id));
-    if (d.libreLogs) setLibreLogs((prev) => mergeByKey(prev, d.libreLogs, (l) => l.ts));
+  const persistLocalSnapshot = async (d) => {
+    const n = normalizeCloudData(d);
+    await window.storage.set("ketome-data", JSON.stringify(n)).catch(() => {});
+    return n;
+  };
+
+  /* טעינה ידנית או התחברות מחליפות את כל המצב המקומי בתמונת הענן.
+     כך כפתור "טעינה מהענן" באמת משחזר את מה שנשמר, ולא רק ממזג חלקים. */
+  const replaceDataFromCloud = (d) => {
+    const n = normalizeCloudData(d);
+    setProfile(n.profile);
+    setCarbLimit(n.carbLimit);
+    setCalLimit(n.calLimit);
+    setWeights(n.weights);
+    setMeasurements(n.measurements);
+    setMeals(n.meals);
+    setMeds(n.meds);
+    setLibreLogs(n.libreLogs);
+    setThemeMode(n.themeMode);
+    setWeekAnchor(startOfWeek(new Date()));
+    return n;
   };
 
   const doAuth = async (mode) => {
     setAuthMsg(null);
+    setCloudStatus(null);
     if (!SERVER_URL) { setAuthMsg("בסביבת תצוגה זו אין שרת מחובר — הנתונים נשמרים במכשיר בלבד. בגרסה המלאה החיבור פועל אוטומטית."); return; }
     if (authForm.user.trim().length < 2 || authForm.pass.length < 1) { setAuthMsg("שם משתמש ואת הסיסמה יש למלא"); return; }
     if (mode === "register" && !isStrongPass(authForm.pass)) { setAuthMsg("הסיסמה חייבת לכלול 8+ תווים, עם לפחות אות אחת וספרה אחת"); return; }
     if (mode === "register" && (!authForm.email.trim() || !authForm.email.includes("@"))) { setAuthMsg("כתובת אימייל תקינה נדרשת"); return; }
+
     setAuthBusy(true);
+    cloudHydratingRef.current = true;
+    cloudSessionReadyRef.current = false;
+
     try {
       const payload = { user: authForm.user.trim(), pass: authForm.pass };
       if (mode === "register") payload.email = authForm.email.trim();
       const d = await api(mode === "register" ? "/auth/register" : "/auth/login", payload);
-      const a = { user: d.user, token: d.token, hasEmail: mode === "register" ? true : !!d.hasEmail };
+
+      /* בודקים את האימייל מול /auth/me בכל התחברות.
+         אם השרת לא מחזיר hasEmail ב-login, לא מסיקים בטעות שאין אימייל. */
+      let accountInfo = null;
+      try { accountInfo = await api("/auth/me", { token: d.token }); } catch { /* יוצג מצב לא ידוע, לא "אין אימייל" */ }
+
+      const a = {
+        user: accountInfo?.user || d.user || authForm.user.trim(),
+        token: d.token,
+        hasEmail: accountInfo ? !!accountInfo.hasEmail : (d.hasEmail === undefined ? null : !!d.hasEmail),
+        email: accountInfo?.email || d.email || null,
+      };
       setAuth(a);
-      if (remember) await window.storage.set("ketome-auth", JSON.stringify(a)).catch(() => {});
-      if (mode === "login") {
-        try { const cloud = await api("/data/load", { token: d.token }); applyData(cloud); setAuthMsg("✓ מחובר — הנתונים נטענו מהענן"); }
-        catch { setAuthMsg("✓ מחובר"); }
+
+      /* "זכור אותי" שומר רק token ושם משתמש. הסיסמה אינה נשמרת בקוד. */
+      if (remember) {
+        await window.storage.set("ketome-auth", JSON.stringify(a)).catch(() => {});
       } else {
-        /* חשבון חדש מתחיל נקי — לא לוקח איתו נתונים שהיו באפליקציה קודם (למשל נתוני בדיקה) */
-        setProfile({ name: "", age: "30", height: "170", weight: "70", gender: "m", activity: "light", style: "standard", medical: "none" });
-        setCarbLimit(50); setCalLimit(2000);
-        setWeights([]); setMeasurements([]); setMeals([]); setMeds([]); setLibreLogs([]);
-        await api("/data/save", { token: d.token, data: {
-          profile: { name: "", age: "30", height: "170", weight: "70", gender: "m", activity: "light", style: "standard", medical: "none" },
-          carbLimit: 50, calLimit: 2000, weights: [], measurements: [], meals: [], meds: [], libreLogs: [],
-        } }).catch(() => {});
+        await window.storage.delete("ketome-auth").catch(() => {});
+      }
+      await window.storage.set("ketome-login-prefs", JSON.stringify({ user: remember ? a.user : "", remember })).catch(() => {});
+
+      if (mode === "login") {
+        try {
+          const cloud = await api("/data/load", { token: d.token });
+          const normalized = replaceDataFromCloud(cloud);
+          await persistLocalSnapshot(normalized);
+          const cloudTime = normalized.updatedAt ? ` · נשמר ${new Date(normalized.updatedAt).toLocaleString("he-IL")}` : "";
+          setAuthMsg(`✓ מחובר — נטענה תמונת הענן המלאה${cloudTime}`);
+          setCloudStatus(`✓ ${summarizeData(normalized)}`);
+        } catch (cloudError) {
+          /* כשל בענן לא מבטל התחברות תקינה. הנתונים המקומיים נשארים עד ניסיון טעינה נוסף. */
+          setAuthMsg(`✓ מחובר, אך טעינת הענן נכשלה: ${cloudError.message}`);
+          setCloudStatus(`הטעינה מהענן נכשלה: ${cloudError.message}`);
+        }
+      } else {
+        const clean = normalizeCloudData({ profile: defaultProfile(), carbLimit: 50, calLimit: 2000, weights: [], measurements: [], meals: [], meds: [], libreLogs: [], themeMode: "light", updatedAt: Date.now(), appVersion: APP_VERSION });
+        replaceDataFromCloud(clean);
+        await persistLocalSnapshot(clean);
+        try {
+          await api("/data/save", { token: d.token, data: clean });
+          setCloudStatus(`✓ נשמר בענן · ${summarizeData(clean)}`);
+        } catch (cloudError) {
+          setCloudStatus(`החשבון נוצר, אך הגיבוי הראשוני נכשל: ${cloudError.message}`);
+        }
         setAuthMsg("✓ נרשמת בהצלחה — חשבון חדש ונקי");
       }
-      setAuthForm({ user: "", pass: "", email: "" });
+
+      setAuthForm({ user: a.user, pass: "", email: "" });
       setAuthMode("login");
-    } catch (e) { setAuthMsg(e.message); }
-    finally { setAuthBusy(false); }
+    } catch (e) {
+      setAuthMsg(e.message);
+      setAuth(null);
+    } finally {
+      cloudHydratingRef.current = false;
+      cloudSessionReadyRef.current = true;
+      setAuthBusy(false);
+    }
   };
 
   const cloudSave = async () => {
-    setAuthMsg(null); setAuthBusy(true);
-    try { await api("/data/save", { token: auth.token, data: appData() }); setAuthMsg("✓ גובה לענן"); }
-    catch (e) { setAuthMsg(e.message); }
-    finally { setAuthBusy(false); }
+    if (!auth) return;
+    setAuthMsg(null);
+    setCloudStatus("שומר תמונת מצב מלאה לענן…");
+    setAuthBusy(true);
+
+    if (cloudSaveTimerRef.current) {
+      clearTimeout(cloudSaveTimerRef.current);
+      cloudSaveTimerRef.current = null;
+    }
+
+    try {
+      const snapshot = appData();
+      await api("/data/save", { token: auth.token, data: snapshot });
+      await persistLocalSnapshot(snapshot);
+      setAuthMsg(`✓ הגיבוי לענן הושלם ב־${new Date(snapshot.updatedAt).toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" })}`);
+      setCloudStatus(`✓ נשמר בענן · ${summarizeData(snapshot)}`);
+    } catch (e) {
+      setAuthMsg(e.message);
+      setCloudStatus(`הגיבוי נכשל: ${e.message}`);
+    } finally {
+      setAuthBusy(false);
+    }
   };
+
   const cloudLoad = async () => {
-    setAuthMsg(null); setAuthBusy(true);
-    try { const d = await api("/data/load", { token: auth.token }); applyData(d); setAuthMsg("✓ נטען מהענן"); }
-    catch (e) { setAuthMsg(e.message); }
-    finally { setAuthBusy(false); }
+    if (!auth) return;
+    setAuthMsg(null);
+    setCloudStatus("טוען תמונת מצב מלאה מהענן…");
+    setAuthBusy(true);
+    cloudHydratingRef.current = true;
+    cloudSessionReadyRef.current = false;
+
+    if (cloudSaveTimerRef.current) {
+      clearTimeout(cloudSaveTimerRef.current);
+      cloudSaveTimerRef.current = null;
+    }
+
+    try {
+      const d = await api("/data/load", { token: auth.token });
+      const normalized = replaceDataFromCloud(d);
+      await persistLocalSnapshot(normalized);
+      const cloudTime = normalized.updatedAt ? ` · נשמר ${new Date(normalized.updatedAt).toLocaleString("he-IL")}` : "";
+      setAuthMsg(`✓ הטעינה מהענן הושלמה${cloudTime}`);
+      setCloudStatus(`✓ נטען מהענן · ${summarizeData(normalized)}`);
+    } catch (e) {
+      setAuthMsg(e.message);
+      setCloudStatus(`הטעינה נכשלה: ${e.message}`);
+    } finally {
+      cloudHydratingRef.current = false;
+      cloudSessionReadyRef.current = true;
+      setAuthBusy(false);
+    }
   };
+
   const logout = async () => {
     /* חסימה מיידית של כל שמירה אוטומטית לפני שינוי state כלשהו */
     logoutInProgressRef.current = true;
+    cloudHydratingRef.current = false;
+    cloudSessionReadyRef.current = false;
     setLoaded(false);
 
     if (localSaveTimerRef.current) {
@@ -814,27 +983,28 @@ function KetoApp() {
       cloudSaveTimerRef.current = null;
     }
 
-    const emptyProfile = {
-      name: "", age: "30", height: "170", weight: "70",
-      gender: "m", activity: "light", style: "standard", medical: "none",
-    };
-    const emptyData = {
+    const loginUser = auth?.user || authForm.user || "";
+    const emptyProfile = defaultProfile();
+    const emptyData = normalizeCloudData({
       profile: emptyProfile, carbLimit: 50, calLimit: 2000,
       weights: [], measurements: [], meals: [], meds: [], libreLogs: [],
-      themeMode: "light",
-    };
+      themeMode: "light", updatedAt: null, appVersion: APP_VERSION,
+    });
+
+    /* שומרים רק את העדפת ההתחברות ושם המשתמש. לא שומרים סיסמה. */
+    await window.storage.set("ketome-login-prefs", JSON.stringify({ user: remember ? loginUser : "", remember })).catch(() => {});
 
     /* איפוס מיידי של כל הלשוניות והכותרת */
     setAuth(null);
     setAuthMsg(null);
+    setCloudStatus(null);
     setAuthBusy(false);
     setAuthMode("login");
-    setAuthForm({ user: "", pass: "", email: "" });
+    setAuthForm({ user: remember ? loginUser : "", pass: "", email: "" });
     setForgotEmail("");
     setResetCode("");
     setResetNewPass("");
     setAttachEmailValue("");
-    setRemember(true);
 
     setProfile(emptyProfile);
     setCarbLimit(50);
@@ -891,11 +1061,11 @@ function KetoApp() {
     await window.storage.delete("ketome-auth").catch(() => {});
     await window.storage.set("ketome-data", JSON.stringify(emptyData)).catch(() => {});
 
-    /* תמיכה גם בגרסאות ישנות שכתבו ישירות ל-localStorage */
     try {
       window.localStorage.removeItem("ketome-auth");
       window.localStorage.setItem("ketome-logout-reset", "1");
       window.localStorage.setItem("ketome-data", JSON.stringify(emptyData));
+      window.localStorage.setItem("ketome-login-prefs", JSON.stringify({ user: remember ? loginUser : "", remember }));
     } catch { /* אחסון חסום */ }
 
     /* רענון מלא לאחר שהמידע הריק נשמר. נתוני הענן נשארים בחשבון. */
@@ -945,7 +1115,7 @@ function KetoApp() {
     setAuthBusy(true);
     try {
       await api("/auth/set-email", { token: auth.token, email: attachEmailValue.trim() });
-      const updated = { ...auth, hasEmail: true };
+      const updated = { ...auth, hasEmail: true, email: attachEmailValue.trim() };
       setAuth(updated);
       if (remember) await window.storage.set("ketome-auth", JSON.stringify(updated)).catch(() => {});
       setAuthMsg("✓ האימייל צורף לחשבון");
@@ -1511,24 +1681,24 @@ function KetoApp() {
               {!auth ? (
                 <div style={{ marginTop: 6 }}>
                   {authMode === "login" && (
-                    <>
-                      <input placeholder="שם משתמש" autoComplete="username" value={authForm.user}
+                    <form autoComplete="on" onSubmit={(e) => { e.preventDefault(); doAuth("login"); }}>
+                      <input name="username" placeholder="שם משתמש" autoComplete="username" value={authForm.user}
                         onChange={(e) => setAuthForm({ ...authForm, user: e.target.value })} style={input()} />
-                      <input placeholder="סיסמה" type="password" autoComplete="current-password" value={authForm.pass}
+                      <input name="password" placeholder="סיסמה" type="password" autoComplete="current-password" value={authForm.pass}
                         onChange={(e) => setAuthForm({ ...authForm, pass: e.target.value })} style={input()} />
                       <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12, fontSize: 13.5, cursor: "pointer" }}>
                         <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} style={{ accentColor: T.ink }} />
                         זכור אותי במכשיר הזה
                       </label>
                       <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
-                        <button style={{ ...btn, flex: 1, padding: "10px 0" }} disabled={authBusy} onClick={() => doAuth("login")}>התחברות</button>
-                        <button style={{ ...btnGhost, flex: 1, padding: "10px 0" }} disabled={authBusy} onClick={() => setAuthMode("register")}>הרשמה</button>
+                        <button type="submit" style={{ ...btn, flex: 1, padding: "10px 0" }} disabled={authBusy}>התחברות</button>
+                        <button type="button" style={{ ...btnGhost, flex: 1, padding: "10px 0" }} disabled={authBusy} onClick={() => setAuthMode("register")}>הרשמה</button>
                       </div>
                       <div style={{ display: "flex", gap: 16, marginTop: 14, fontSize: 12.5 }}>
-                        <button style={{ background: "none", border: "none", color: T.muted, cursor: "pointer", padding: 0, textDecoration: "underline" }} onClick={() => { setAuthMode("forgot-user"); setAuthMsg(null); }}>שכחתי שם משתמש</button>
-                        <button style={{ background: "none", border: "none", color: T.muted, cursor: "pointer", padding: 0, textDecoration: "underline" }} onClick={() => { setAuthMode("forgot-pass"); setAuthMsg(null); }}>שכחתי סיסמה</button>
+                        <button type="button" style={{ background: "none", border: "none", color: T.muted, cursor: "pointer", padding: 0, textDecoration: "underline" }} onClick={() => { setAuthMode("forgot-user"); setAuthMsg(null); }}>שכחתי שם משתמש</button>
+                        <button type="button" style={{ background: "none", border: "none", color: T.muted, cursor: "pointer", padding: 0, textDecoration: "underline" }} onClick={() => { setAuthMode("forgot-pass"); setAuthMsg(null); }}>שכחתי סיסמה</button>
                       </div>
-                    </>
+                    </form>
                   )}
 
                   {authMode === "register" && (
@@ -1591,20 +1761,30 @@ function KetoApp() {
                   </div>
                   <button style={{ background: "none", border: "none", color: T.muted, fontSize: 13, cursor: "pointer", marginTop: 10, padding: 0 }} onClick={logout}>התנתקות</button>
 
-                  {auth.hasEmail ? (
-                    <div style={{ marginTop: 18, padding: "10px 0", borderTop: `1px solid ${T.hair}`, fontSize: 12.5, color: T.accent }}>
-                      ✓ יש אימייל רשום לחשבון — שחזור סיסמה/שם משתמש זמין
+                  {cloudStatus && (
+                    <div style={{ marginTop: 12, fontSize: 12.5, color: cloudStatus.startsWith("✓") ? T.accent : T.muted, lineHeight: 1.7 }}>
+                      {cloudStatus}
                     </div>
-                  ) : (
+                  )}
+
+                  {auth.hasEmail === true ? (
+                    <div style={{ marginTop: 18, padding: "10px 0", borderTop: `1px solid ${T.hair}`, fontSize: 12.5, color: T.accent }}>
+                      ✓ יש אימייל רשום לחשבון{auth.email ? `: ${auth.email}` : ""} — שחזור סיסמה/שם משתמש זמין
+                    </div>
+                  ) : auth.hasEmail === false ? (
                     <div style={{ marginTop: 18, padding: "12px 0", borderTop: `1px solid ${T.hair}` }}>
                       <div style={{ fontSize: 13, color: T.muted, marginBottom: 8 }}>
-                        לא רשום אימייל לחשבון זה — נדרש לשחזור סיסמה/שם משתמש עתידי:
+                        לפי השרת לא רשום אימייל לחשבון זה — נדרש לשחזור סיסמה/שם משתמש עתידי:
                       </div>
                       <div style={{ display: "flex", gap: 10 }}>
                         <input placeholder="הוסף אימייל לחשבון" type="email" value={attachEmailValue}
                           onChange={(e) => setAttachEmailValue(e.target.value)} style={input({ flex: 1 })} />
                         <button style={{ ...btnGhost, padding: "8px 18px", fontSize: 13 }} disabled={authBusy} onClick={attachEmail}>שמירה</button>
                       </div>
+                    </div>
+                  ) : (
+                    <div style={{ marginTop: 18, padding: "10px 0", borderTop: `1px solid ${T.hair}`, fontSize: 12.5, color: T.muted }}>
+                      מצב האימייל לא אומת כרגע מול השרת. האפליקציה לא תבקש להוסיף אימייל עד שתתקבל תשובה ודאית שאין אימייל.
                     </div>
                   )}
                 </div>
@@ -1627,7 +1807,7 @@ function KetoApp() {
                 🔌 בדיקת חיבור לשרת
               </button>
               <div style={{ fontSize: 12, color: T.muted, marginTop: 10, lineHeight: 1.7 }}>
-                הנתונים נשמרים אוטומטית במכשיר. חשבון אישי מוסיף גיבוי לענן וגישה מכל מכשיר. הסיסמה נשמרת בשרת כהצפנה חד־כיוונית בלבד.
+                הנתונים נשמרים אוטומטית במכשיר. חשבון אישי מוסיף גיבוי לענן וגישה מכל מכשיר. KetoMe אינה שומרת את הסיסמה במכשיר; שמירת סיסמה ומילוי אוטומטי מנוהלים על ידי הדפדפן. בשרת נשמר רק גיבוב חד־כיווני של הסיסמה.
               </div>
             </section>
 
