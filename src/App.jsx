@@ -18,13 +18,13 @@ if (typeof window !== "undefined" && !window.storage) {
   };
 }
 
-/* ═══ KetoMe · v1.9.6 · עיצוב מינימליסטי ═══ */
+/* ═══ KetoMe · v1.9.8 · עיצוב מינימליסטי ═══ */
 const LIGHT_THEME = { paper: "#FBFBF9", ink: "#161613", muted: "#8B8A83", hair: "#E7E5DF", accent: "#0F6B5C", warn: "#B4552D", mid: "#C99A2E" };
 const DARK_THEME = { paper: "#17181B", ink: "#F2F1ED", muted: "#9A9A95", hair: "#2E2F33", accent: "#3ED9A0", warn: "#E5906B", mid: "#E3C767" };
 /* T הוא משתנה מודולרי הניתן לשינוי — מתעדכן בתחילת כל רינדור של KetoApp לפי ערכת הנושא הנבחרת,
    כך שרכיבי עזר ברמת המודול (Ruler, Big, Label, Metric) תמיד רואים את הצבעים העדכניים */
 let T = LIGHT_THEME;
-const APP_VERSION = "1.9.6";
+const APP_VERSION = "1.9.8";
 
 /* כתובת השרת מוגדרת פעם אחת כאן ע"י המפתח (Cloudflare Worker) — לא ע"י המשתמש.
    כשריקה: הרשמה/סנכרון ענן מנוטרלים, וניתוח AI עובד ישירות (בסביבת התצוגה). */
@@ -163,6 +163,29 @@ const FOOD_DB = [
   { n: "פיתה (להשוואה)", c: 55, k: 275, p: 9, f: 1.2, u: 60, un: "פיתה" },
   { n: "תפוח (להשוואה)", c: 14, k: 52, p: 0.3, f: 0.2, u: 180, un: "תפוח" },
   { n: "בננה (להשוואה)", c: 23, k: 89, p: 1.1, f: 0.3, u: 120, un: "בננה" },
+  { n: "ציר עצמות ביתי", a: ["מרק עצמות", "bone broth"], c: 0.5, k: 35, p: 7, f: 0.8, u: 240, un: "כוס" },
+  { n: "מרק עצמות", a: ["ציר עצמות"], c: 0.8, k: 45, p: 8, f: 1.2, u: 240, un: "כוס" },
+  { n: "גהי", a: ["חמאה מזוקקת"], c: 0, k: 900, p: 0, f: 100, u: 10, un: "כפית" },
+  { n: "שומן בקר", a: ["טאלו", "tallow"], c: 0, k: 900, p: 0, f: 100, u: 14, un: "כף" },
+  { n: "שומן כבש", c: 0, k: 900, p: 0, f: 100, u: 14, un: "כף" },
+  { n: "מח עצם צלוי", a: ["מוח עצם"], c: 0, k: 770, p: 7, f: 84, u: 30, un: "מנה" },
+  { n: "אסאדו בקר", a: ["בשר", "שורט ריבס"], c: 0, k: 300, p: 24, f: 23, u: 200, un: "מנה" },
+  { n: "בריסקט בקר", a: ["בשר"], c: 0, k: 250, p: 27, f: 16, u: 200, un: "מנה" },
+  { n: "כבד בקר", a: ["בשר", "איברים"], c: 4, k: 175, p: 26, f: 5, u: 100, un: "מנה" },
+  { n: "לבבות עוף", a: ["עוף", "איברים"], c: 1, k: 185, p: 26, f: 8, u: 100, un: "מנה" },
+  { n: "לשון בקר", a: ["בשר"], c: 0, k: 284, p: 19, f: 22, u: 150, un: "מנה" },
+  { n: "סלמון מעושן", a: ["דג"], c: 0, k: 117, p: 18, f: 4, u: 100, un: "חבילה" },
+  { n: "מקרל", a: ["דג"], c: 0, k: 205, p: 19, f: 14, u: 120, un: "פילה" },
+  { n: "הרינג", a: ["דג"], c: 0, k: 217, p: 18, f: 15, u: 100, un: "מנה" },
+  { n: "מסקרפונה", c: 4, k: 430, p: 4, f: 44, u: 30, un: "כף גדושה" },
+  { n: "גבינת חלומי", c: 2, k: 320, p: 22, f: 25, u: 50, un: "פרוסה" },
+  { n: "פרמזן", c: 3.2, k: 431, p: 38, f: 29, u: 10, un: "כף מגוררת" },
+  { n: "גבינת גאודה", c: 2.2, k: 356, p: 25, f: 27, u: 25, un: "פרוסה" },
+  { n: "גבינת צ'דר", c: 1.3, k: 403, p: 25, f: 33, u: 25, un: "פרוסה" },
+  { n: "שמן אבוקדו", c: 0, k: 884, p: 0, f: 100, u: 14, un: "כף" },
+  { n: "שמן קוקוס", c: 0, k: 892, p: 0, f: 100, u: 14, un: "כף" },
+  { n: "שמן MCT", a: ["MCT Oil"], c: 0, k: 850, p: 0, f: 100, u: 14, un: "כף" },
+  { n: "קקאו טבעי ללא סוכר", a: ["אבקת קקאו"], c: 10, k: 228, p: 20, f: 14, u: 5, un: "כפית" },
 ];
 
 /* חיפוש גמיש: כל מילות החיפוש חייבות להופיע בשם, בכל סדר */
@@ -272,6 +295,8 @@ class ErrorBoundary extends React.Component {
 function KetoApp() {
   const [tab, setTab] = useState("status");
   const [mealModalOpen, setMealModalOpen] = useState(false);
+  const [toast, setToast] = useState(null);
+  const [customFoods, setCustomFoods] = useState([]);
 
   /* פרופיל */
   const [profile, setProfile] = useState({ name: "", age: "30", height: "170", weight: "70", gender: "m", activity: "light", style: "standard", medical: "none" });
@@ -407,6 +432,7 @@ function KetoApp() {
           if (Array.isArray(d.meds)) setMeds(d.meds);
           if (Array.isArray(d.libreLogs)) setLibreLogs(d.libreLogs);
           if (d.themeMode) setThemeMode(d.themeMode);
+          if (Array.isArray(d.customFoods)) setCustomFoods(d.customFoods);
         }
       } catch { /* אין נתונים שמורים עדיין */ }
 
@@ -483,7 +509,7 @@ function KetoApp() {
       window.storage
         .set("ketome-data", JSON.stringify({
           profile, carbLimit, calLimit, weights, measurements, meds, libreLogs, themeMode,
-          meals: meals.map(({ thumb, ...m }) => m),
+          meals: meals.map(({ thumb, ...m }) => m), customFoods,
         }))
         .catch(() => {});
     }, 500);
@@ -494,7 +520,7 @@ function KetoApp() {
         localSaveTimerRef.current = null;
       }
     };
-  }, [loaded, profile, carbLimit, calLimit, weights, measurements, meals, meds, libreLogs, themeMode]);
+  }, [loaded, profile, carbLimit, calLimit, weights, measurements, meals, meds, libreLogs, themeMode, customFoods]);
 
   /* ─ גיבוי אוטומטי לענן — לא פועל בזמן התנתקות ─ */
   useEffect(() => {
@@ -613,6 +639,23 @@ function KetoApp() {
     return d.getTime();
   };
 
+  const showMealAdded = (name) => {
+    setMealModalOpen(false);
+    setToast(`✓ ${name || "הארוחה"} נוספה`);
+    window.setTimeout(() => setToast(null), 1400);
+  };
+
+  const allFoods = useMemo(() => [...customFoods, ...FOOD_DB], [customFoods]);
+  const searchAllFoods = (q) => {
+    const toks = q.trim().split(/\s+/).filter(Boolean);
+    const source = allFoods;
+    if (!toks.length) return source.slice(0, 8);
+    return source.filter((f) => {
+      const hay = `${f.n} ${(f.a || []).join(" ")}`;
+      return toks.every((t) => hay.includes(t));
+    }).slice(0, 12);
+  };
+
   /* ─ ניתוח תמונה ─ */
   const analyzePhoto = async (file) => {
     setPhotoError(null); setPhotoResult(null); setAnalyzing(true);
@@ -644,6 +687,7 @@ function KetoApp() {
     const p = photoResult.data;
     setMeals([...meals, { id: Date.now(), ts: photoResult.ts, name: p.name, carbs: +p.carbs || 0, cal: +p.cal || 0, protein: +p.protein || 0, fat: +p.fat || 0, keto: p.keto, thumb: photoResult.thumb }]);
     setPhotoResult(null);
+    showMealAdded(p.name);
   };
 
   /* ─ שליפת ערכים בטקסט (AI / שרת) ─ */
@@ -669,6 +713,26 @@ function KetoApp() {
     finally { setLookupBusy(false); }
   };
 
+  const saveCurrentFormToMyFoods = () => {
+    const name = form.name.trim();
+    const carbs = parseFloat(form.carbs);
+    if (!name || isNaN(carbs)) return;
+    const item = {
+      n: name,
+      a: ["המזונות שלי"],
+      c: carbs,
+      k: parseFloat(form.cal) || 0,
+      p: parseFloat(form.protein) || 0,
+      f: parseFloat(form.fat) || 0,
+      u: 100,
+      un: "100 גר׳",
+      custom: true,
+    };
+    setCustomFoods((prev) => [item, ...prev.filter((x) => x.n !== name)]);
+    setToast("✓ נשמר במאגר האישי");
+    window.setTimeout(() => setToast(null), 1400);
+  };
+
   const addMeal = () => {
     const c = parseFloat(form.carbs);
     if (!form.name.trim() || isNaN(c)) return;
@@ -684,6 +748,7 @@ function KetoApp() {
     setForm({ name: "", carbs: "", cal: "", protein: "", fat: "" });
     setFormQty(1);
     setAdding(false);
+    showMealAdded(form.name.trim());
   };
 
   const pickFood = (f) => { setSelectedFood(f); setByUnit(true); setQty(1); setGramsIn(String(f.u || 100)); };
@@ -697,6 +762,7 @@ function KetoApp() {
       carbs: +(f.c * r).toFixed(1), cal: Math.round(f.k * r), protein: +(f.p * r).toFixed(1), fat: +(f.f * r).toFixed(1),
     }]);
     setSelectedFood(null); setFoodQuery(""); setFoodOpen(false);
+    showMealAdded(f.n);
   };
 
   const addMeasurement = () => {
@@ -788,7 +854,7 @@ function KetoApp() {
   });
 
   const appData = () => ({
-    profile, carbLimit, calLimit, weights, measurements, meds, libreLogs, themeMode,
+    profile, carbLimit, calLimit, weights, measurements, meds, libreLogs, themeMode, customFoods,
     meals: meals.map(({ thumb, ...m }) => m),
     updatedAt: Date.now(),
     appVersion: APP_VERSION,
@@ -803,6 +869,7 @@ function KetoApp() {
     meals: Array.isArray(d?.meals) ? d.meals : [],
     meds: Array.isArray(d?.meds) ? d.meds : [],
     libreLogs: Array.isArray(d?.libreLogs) ? d.libreLogs : [],
+    customFoods: Array.isArray(d?.customFoods) ? d.customFoods : [],
     themeMode: d?.themeMode === "dark" ? "dark" : "light",
     updatedAt: d?.updatedAt || null,
     appVersion: d?.appVersion || null,
@@ -831,6 +898,7 @@ function KetoApp() {
     setMeals(n.meals);
     setMeds(n.meds);
     setLibreLogs(n.libreLogs);
+    setCustomFoods(n.customFoods);
     setThemeMode(n.themeMode);
     setWeekAnchor(startOfWeek(new Date()));
     return n;
@@ -1017,6 +1085,7 @@ function KetoApp() {
     setMeasurements([]);
     setMeds([]);
     setLibreLogs([]);
+    setCustomFoods([]);
 
     setTab("status");
     setWeekAnchor(startOfWeek(new Date()));
@@ -1256,27 +1325,27 @@ function KetoApp() {
         {/* ═══ סטטוס ═══ */}
         {tab === "status" && (
           <>
-            <section style={{ paddingTop: 18 }}>
+            <section style={{ paddingTop: 12 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
                 <Label>{over ? "חריגה מהיעד היומי" : "נותרו להיום"}</Label>
                 <button style={{ ...btn, padding: "8px 16px", fontSize: 13, flexShrink: 0 }} onClick={() => setMealModalOpen(true)}>+ הוספת ארוחה</button>
               </div>
               <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginTop: 4 }}>
-                <Big color={statusColor} size={62}>{fmt(Math.abs(left))}</Big>
+                <Big color={statusColor} size={48}>{fmt(Math.abs(left))}</Big>
                 <span style={{ fontSize: 15, color: T.muted }}>גר׳ פחמימות</span>
               </div>
               <Ruler value={Math.max(left, 0)} max={carbLimit} color={statusColor} />
               <div style={{ fontSize: 12.5, color: T.muted, marginTop: 6, fontVariantNumeric: "tabular-nums" }}>
                 נצרכו {fmt(totals.carbs)} מתוך {carbLimit} גר׳
               </div>
-              <div style={{ marginTop: 18 }}>
+              <div style={{ marginTop: 12 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
                   <Label>קלוריות</Label>
                   <span style={{ color: calOver ? T.warn : T.ink, fontVariantNumeric: "tabular-nums", fontWeight: 700 }}>{fmt(totals.cal)} <span style={{ fontWeight: 400, color: T.muted }}>/ {calLimit}</span></span>
                 </div>
                 <Ruler compact value={totals.cal} max={calLimit} color={calOver ? T.warn : T.ink} />
               </div>
-              <div style={{ display: "flex", gap: 20, marginTop: 14, fontSize: 13, fontVariantNumeric: "tabular-nums", flexWrap: "wrap" }}>
+              <div style={{ display: "flex", gap: "8px 16px", marginTop: 10, fontSize: 12.5, fontVariantNumeric: "tabular-nums", flexWrap: "wrap" }}>
                 <span><b>{fmt(totals.protein)}</b> <span style={{ color: T.muted }}>חלבון</span></span>
                 <span><b>{fmt(totals.fat)}</b> <span style={{ color: T.muted }}>שומן</span></span>
                 <span>🔥 <b>{streaks.streak}</b> <span style={{ color: T.muted }}>ימים ביעד ברצף</span></span>
@@ -1284,8 +1353,8 @@ function KetoApp() {
               </div>
 
               {/* דוח יומי — בולט וזמין */}
-              <div style={{ marginTop: 20 }}>
-                <button style={{ ...btn, width: "100%", padding: "12px 0" }} onClick={() => setReportOpen(!reportOpen)}>
+              <div style={{ marginTop: 14 }}>
+                <button style={{ ...btnGhost, width: "100%", padding: "9px 0", fontSize: 13.5 }} onClick={() => setReportOpen(!reportOpen)}>
                   📤 דוח יומי — שיתוף והעתקה
                 </button>
                 {reportOpen && (
@@ -1300,17 +1369,17 @@ function KetoApp() {
               </div>
             </section>
 
-            <section style={{ marginTop: 28 }}>
+            <section style={{ marginTop: 18 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <Label>ארוחות היום · {todayMeals.length}</Label>
               </div>
               {todayMeals.length === 0 && <div style={{ marginTop: 14, fontSize: 14, color: T.muted }}>עוד לא נרשמו ארוחות היום.</div>}
               {todayMeals.map((m) => (
-                <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderBottom: `1px solid ${T.hair}` }}>
-                  {m.thumb ? <img src={m.thumb} alt="" style={{ width: 44, height: 44, objectFit: "cover", border: `1px solid ${T.hair}`, flexShrink: 0 }} /> :
-                    <div style={{ width: 44, height: 44, border: `1px solid ${T.hair}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: T.muted, flexShrink: 0 }}>רישום</div>}
+                <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${T.hair}` }}>
+                  {m.thumb ? <img src={m.thumb} alt="" style={{ width: 36, height: 36, objectFit: "cover", border: `1px solid ${T.hair}`, flexShrink: 0 }} /> :
+                    <div style={{ width: 36, height: 36, border: `1px solid ${T.hair}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: T.muted, flexShrink: 0 }}>רישום</div>}
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 15, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.name}{m.keto === false && <span style={{ fontSize: 11, color: T.warn, marginRight: 6 }}>· לא קיטו</span>}</div>
+                    <div style={{ fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.name}{m.keto === false && <span style={{ fontSize: 11, color: T.warn, marginRight: 6 }}>· לא קיטו</span>}</div>
                     <div style={{ fontSize: 12, color: T.muted, fontVariantNumeric: "tabular-nums" }}>{timeOf(m.ts)}</div>
                   </div>
                   <div style={{ textAlign: "left", flexShrink: 0 }}>
@@ -1638,7 +1707,7 @@ function KetoApp() {
               </div>
             </section>
 
-            <section style={{ marginTop: 28 }}>
+            <section style={{ marginTop: 18 }}>
               <Label>חלק 2 · אורח חיים</Label>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
                 {[["sit", "ישיבה"], ["light", "קלה 1–2/שבוע"], ["mid", "בינונית 3–5"], ["high", "אינטנסיבית 6–7"], ["hard", "עבודה פיזית"]].map(([v, l]) => (
@@ -1647,7 +1716,7 @@ function KetoApp() {
               </div>
             </section>
 
-            <section style={{ marginTop: 28 }}>
+            <section style={{ marginTop: 18 }}>
               <Label>חלק 3 · סגנון קיטו</Label>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
                 {[["liberal", "שפוי (50–100 גר׳)"], ["standard", "סטנדרטי (20–50)"], ["aggressive", "אגרסיבי (עד 20)"]].map(([v, l]) => (
@@ -1656,7 +1725,7 @@ function KetoApp() {
               </div>
             </section>
 
-            <section style={{ marginTop: 28 }}>
+            <section style={{ marginTop: 18 }}>
               <Label>חלק 4 · מצב רפואי (אופציונלי)</Label>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
                 {[["none", "אין"], ["t2d", "סוכרת סוג 2"], ["epilepsy", "אפילפסיה"]].map(([v, l]) => (
@@ -1666,7 +1735,7 @@ function KetoApp() {
               <div style={{ fontSize: 12, color: T.muted, marginTop: 8 }}>מצב רפואי מוריד את תקרת הפחמימות ל־20 גר׳. חשוב ללוות מצב כזה עם רופא/ה.</div>
             </section>
 
-            <section style={{ marginTop: 28 }}>
+            <section style={{ marginTop: 18 }}>
               <Label>יעדים יומיים</Label>
               <button style={{ ...btnGhost, marginTop: 10, padding: "8px 18px", fontSize: 13.5 }} onClick={calcGoals}>✨ חשב המלצות אוטומטית</button>
               <div style={{ display: "flex", gap: 16, marginTop: 8 }}>
@@ -1681,7 +1750,7 @@ function KetoApp() {
               </div>
             </section>
 
-            <section style={{ marginTop: 28 }}>
+            <section style={{ marginTop: 18 }}>
               <Label>רישום משקל</Label>
               <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginTop: 6 }}>
                 <input placeholder='משקל (ק"ג)' inputMode="decimal" value={weightIn} onChange={(e) => setWeightIn(e.target.value)} style={input({ maxWidth: 120 })} />
@@ -1698,7 +1767,7 @@ function KetoApp() {
               )}
             </section>
 
-            <section style={{ marginTop: 28 }}>
+            <section style={{ marginTop: 18 }}>
               <Label>חשבון אישי</Label>
               {!auth ? (
                 <div style={{ marginTop: 6 }}>
@@ -1859,19 +1928,19 @@ function KetoApp() {
 
       {/* ═══ פופ-אפ הוספת ארוחה — נגיש מ"סטטוס", חוזרים אליו מעודכן בסגירה ═══ */}
       {mealModalOpen && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(22,22,19,0.5)", zIndex: 50, display: "flex", alignItems: "flex-end", justifyContent: "center", padding: "calc(18px + env(safe-area-inset-top, 0px)) 0 calc(72px + env(safe-area-inset-bottom, 0px))" }} onClick={() => setMealModalOpen(false)}>
-          <div onClick={(e) => e.stopPropagation()} style={{ background: T.paper, width: "calc(100% - 24px)", maxWidth: 480, margin: "0 auto", maxHeight: "82vh", overflowY: "auto", borderRadius: 18, padding: "18px 24px 28px", boxShadow: "0 12px 40px rgba(0,0,0,0.25)" }}>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(22,22,19,0.5)", zIndex: 50, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "calc(8px + env(safe-area-inset-top, 0px)) 0 calc(8px + env(safe-area-inset-bottom, 0px))" }} onClick={() => setMealModalOpen(false)}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: T.paper, width: "calc(100% - 16px)", maxWidth: 480, margin: "0 auto", height: "calc(100dvh - 16px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))", maxHeight: 760, overflowY: "auto", overscrollBehavior: "contain", borderRadius: 16, padding: "14px 18px 18px", boxShadow: "0 12px 40px rgba(0,0,0,0.25)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-              <div style={{ fontFamily: "'Frank Ruhl Libre', serif", fontSize: 19 }}>הוספת ארוחה</div>
+              <div style={{ fontFamily: "'Frank Ruhl Libre', serif", fontSize: 18 }}>הוספת ארוחה</div>
               <button onClick={() => setMealModalOpen(false)} aria-label="סגירה"
                 style={{ background: "none", border: "none", color: T.muted, fontSize: 22, cursor: "pointer", padding: 0, lineHeight: 1 }}>×</button>
             </div>
-<section style={{ paddingTop: 26 }}>
+<section style={{ paddingTop: 12 }}>
               <Label>תאריך הארוחה</Label>
-              <input type="date" value={mealDate} max={todayKey} onChange={(e) => setMealDate(e.target.value)} style={input({ marginTop: 4, maxWidth: 200 })} />
+              <input type="date" value={mealDate} max={todayKey} onChange={(e) => setMealDate(e.target.value)} style={input({ marginTop: 4, maxWidth: 180, padding: "8px 0", fontSize: 15 })} />
             </section>
 
-            <section style={{ marginTop: 24 }}>
+            <section style={{ marginTop: 16 }}>
               <Label>סריקת ארוחה עם AI</Label>
               {!SERVER_URL && !HAS_NATIVE_STORAGE && (
                 <div style={{ marginTop: 8, fontSize: 13, color: T.warn, lineHeight: 1.7 }}>
@@ -1879,7 +1948,7 @@ function KetoApp() {
                   המאגר וההזנה הידנית עובדים כרגיל.
                 </div>
               )}
-              <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
+              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
                 <div style={{ position: "relative", flex: 1 }}>
                   <span style={{ ...btn, display: "block", textAlign: "center", opacity: analyzing ? 0.5 : 1 }}>📷 מצלמה</span>
                   <input type="file" accept="image/*" capture="environment" disabled={analyzing} style={fileOverlay}
@@ -1920,22 +1989,32 @@ function KetoApp() {
               )}
             </section>
 
-            <section style={{ marginTop: 26 }}>
-              <div style={{ display: "flex", gap: 10 }}>
+            <section style={{ marginTop: 18 }}>
+              <div style={{ display: "flex", gap: 8, position: "sticky", top: -14, zIndex: 3, background: T.paper, padding: "8px 0" }}>
                 <button style={foodOpen ? btn : btnGhost} onClick={() => { setFoodOpen(!foodOpen); setAdding(false); }}>🔎 מהמאגר</button>
                 <button style={adding ? btn : btnGhost} onClick={() => { setAdding(!adding); setFoodOpen(false); }}>✎ ידני / AI</button>
               </div>
 
               {foodOpen && (
-                <div style={{ marginTop: 14 }}>
-                  <input autoFocus placeholder="חיפוש מזון…" value={foodQuery} onChange={(e) => { setFoodQuery(e.target.value); setSelectedFood(null); }} style={input()} />
-                  {!selectedFood && searchFood(foodQuery).map((f) => (
-                    <button key={f.n} onClick={() => pickFood(f)} style={{ display: "flex", width: "100%", justifyContent: "space-between", gap: 8, padding: "10px 0", background: "none", border: "none", borderBottom: `1px solid ${T.hair}`, cursor: "pointer", textAlign: "right" }}>
-                      <span style={{ fontSize: 14.5, color: T.ink }}>{f.n}</span>
-                      <span style={{ fontSize: 12, color: T.muted, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>{fmt(f.c)} פחמ׳ / 100 גר׳</span>
-                    </button>
-                  ))}
-                  {!selectedFood && foodQuery.trim() && searchFood(foodQuery).length === 0 && (
+                <div style={{ marginTop: 8 }}>
+                  <div style={{ position: "sticky", top: 38, zIndex: 2, background: T.paper, padding: "4px 0 8px" }}>
+                    <input autoFocus enterKeyHint="search" placeholder="הקלדה מציגה מיד את רשימת המזונות…" value={foodQuery}
+                      onFocus={(e) => setTimeout(() => e.currentTarget.scrollIntoView({ block: "start", behavior: "smooth" }), 120)}
+                      onChange={(e) => { setFoodQuery(e.target.value); setSelectedFood(null); }}
+                      style={input({ padding: "9px 0", fontSize: 15 })} />
+                    {!selectedFood && <div style={{ fontSize: 11.5, color: T.muted, marginTop: 5 }}>התוצאות מתעדכנות בזמן ההקלדה — אין צורך לסגור את המקלדת.</div>}
+                  </div>
+                  {!selectedFood && (
+                    <div style={{ maxHeight: "min(34dvh, 260px)", overflowY: "auto", overscrollBehavior: "contain", WebkitOverflowScrolling: "touch", borderTop: `1px solid ${T.hair}` }}>
+                      {searchAllFoods(foodQuery).map((f) => (
+                        <button key={f.n} onClick={() => pickFood(f)} style={{ display: "flex", width: "100%", justifyContent: "space-between", gap: 8, padding: "9px 2px", background: "none", border: "none", borderBottom: `1px solid ${T.hair}`, cursor: "pointer", textAlign: "right" }}>
+                          <span style={{ fontSize: 14, color: T.ink }}>{f.n}</span>
+                          <span style={{ fontSize: 11.5, color: T.muted, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>{fmt(f.c)} פחמ׳ / 100 גר׳</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {!selectedFood && foodQuery.trim() && searchAllFoods(foodQuery).length === 0 && (
                     <div style={{ padding: "12px 0" }}>
                       <div style={{ fontSize: 13.5, color: T.muted }}>"{foodQuery}" לא נמצא במאגר המקומי.</div>
                       <button style={{ ...btnGhost, marginTop: 10, padding: "7px 16px", fontSize: 13 }}
@@ -1986,9 +2065,16 @@ function KetoApp() {
               {adding && (
                 <div style={{ marginTop: 14, paddingBottom: 16, borderBottom: `1px solid ${T.hair}` }}>
                   <input autoFocus placeholder="מה אכלת? (למשל: 2 פרוסות גבינה צהובה)" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} style={input()} />
-                  <button style={{ ...btnGhost, marginTop: 10, padding: "7px 16px", fontSize: 13 }} onClick={lookupFood} disabled={lookupBusy}>
-                    {lookupBusy ? "שולף ערכים…" : "✳ שליפת ערכים אוטומטית"}
-                  </button>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <button style={{ ...btnGhost, marginTop: 10, padding: "7px 16px", fontSize: 13 }} onClick={lookupFood} disabled={lookupBusy}>
+                      {lookupBusy ? "שולף ערכים…" : "✳ שליפת ערכים אוטומטית"}
+                    </button>
+                    {form.name.trim() && form.carbs !== "" && (
+                      <button style={{ ...btnGhost, marginTop: 10, padding: "7px 16px", fontSize: 13 }} onClick={saveCurrentFormToMyFoods}>
+                        ☆ שמור במאגר שלי
+                      </button>
+                    )}
+                  </div>
                   {lookupErr && <div style={{ marginTop: 8, fontSize: 13, color: T.warn }}>{lookupErr}</div>}
                   <div style={{ display: "flex", gap: 16 }}>
                     <input placeholder="פחמימות (גר׳)" inputMode="decimal" value={form.carbs} onChange={(e) => setForm({ ...form, carbs: e.target.value })} style={input()} />
@@ -2023,6 +2109,11 @@ function KetoApp() {
         </div>
       )}
 
+      {toast && (
+        <div role="status" style={{ position: "fixed", left: "50%", bottom: "calc(22px + env(safe-area-inset-bottom, 0px))", transform: "translateX(-50%)", zIndex: 100, background: T.ink, color: T.paper, borderRadius: 999, padding: "10px 18px", fontSize: 14, fontWeight: 700, boxShadow: "0 8px 24px rgba(0,0,0,0.22)", whiteSpace: "nowrap" }}>
+          {toast}
+        </div>
+      )}
 
     </div>
   );
