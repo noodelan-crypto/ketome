@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ReferenceLine, ResponsiveContainer } from "recharts";
 
 
@@ -24,7 +24,7 @@ const DARK_THEME = { paper: "#17181B", ink: "#F2F1ED", muted: "#9A9A95", hair: "
 /* T הוא משתנה מודולרי הניתן לשינוי — מתעדכן בתחילת כל רינדור של KetoApp לפי ערכת הנושא הנבחרת,
    כך שרכיבי עזר ברמת המודול (Ruler, Big, Label, Metric) תמיד רואים את הצבעים העדכניים */
 let T = LIGHT_THEME;
-const APP_VERSION = "1.9.0";
+const APP_VERSION = "1.9.3";
 
 /* כתובת השרת מוגדרת פעם אחת כאן ע"י המפתח (Cloudflare Worker) — לא ע"י המשתמש.
    כשריקה: הרשמה/סנכרון ענן מנוטרלים, וניתוח AI עובד ישירות (בסביבת התצוגה). */
@@ -288,6 +288,10 @@ function KetoApp() {
   const [authMsg, setAuthMsg] = useState(null);
   const [authBusy, setAuthBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  /* מונע מטיימרי שמירה ישנים להחזיר נתונים לאחר התנתקות */
+  const localSaveTimerRef = useRef(null);
+  const cloudSaveTimerRef = useRef(null);
+  const logoutInProgressRef = useRef(false);
   const [themeMode, setThemeMode] = useState("light"); // "light" | "dark"
   T = themeMode === "dark" ? DARK_THEME : LIGHT_THEME; // עדכון המשתנה המודולרי לפני הרינדור
 
@@ -336,33 +340,69 @@ function KetoApp() {
 
   /* ─ טעינה אוטומטית מהאחסון המקומי בפתיחה (כולל "זכור אותי") ─ */
   useEffect(() => {
+    let cancelled = false;
+
     (async () => {
       try {
+        /* סמן זה נכתב לפני התנתקות. אם הדף נטען מחדש בזמן שטיימר ישן עוד היה פעיל,
+           מתעלמים מכל מידע קודם ומתחילים ממצב נקי. */
+        const logoutMarker = await window.storage.get("ketome-logout-reset");
+        if (logoutMarker?.value) {
+          const emptyProfile = { name: "", age: "30", height: "170", weight: "70", gender: "m", activity: "light", style: "standard", medical: "none" };
+          const emptyData = {
+            profile: emptyProfile, carbLimit: 50, calLimit: 2000,
+            weights: [], measurements: [], meals: [], meds: [], libreLogs: [],
+            themeMode: "light",
+          };
+
+          await window.storage.delete("ketome-auth").catch(() => {});
+          await window.storage.set("ketome-data", JSON.stringify(emptyData)).catch(() => {});
+          await window.storage.delete("ketome-logout-reset").catch(() => {});
+
+          if (!cancelled) {
+            setProfile(emptyProfile);
+            setCarbLimit(50);
+            setCalLimit(2000);
+            setWeights([]);
+            setMeasurements([]);
+            setMeals([]);
+            setMeds([]);
+            setLibreLogs([]);
+            setThemeMode("light");
+            setAuth(null);
+            setLoaded(true);
+          }
+          return;
+        }
+      } catch { /* ממשיכים לטעינה רגילה */ }
+
+      try {
         const r = await window.storage.get("ketome-data");
-        if (r?.value) {
+        if (r?.value && !cancelled) {
           const d = JSON.parse(r.value);
           if (d.profile) setProfile(d.profile);
-          if (d.carbLimit) setCarbLimit(d.carbLimit);
-          if (d.calLimit) setCalLimit(d.calLimit);
-          if (d.meals) setMeals(d.meals);
-          if (d.measurements) setMeasurements(d.measurements);
-          if (d.weights) setWeights(d.weights);
-          if (d.meds) setMeds(d.meds);
-          if (d.libreLogs) setLibreLogs(d.libreLogs);
+          if (d.carbLimit != null) setCarbLimit(d.carbLimit);
+          if (d.calLimit != null) setCalLimit(d.calLimit);
+          if (Array.isArray(d.meals)) setMeals(d.meals);
+          if (Array.isArray(d.measurements)) setMeasurements(d.measurements);
+          if (Array.isArray(d.weights)) setWeights(d.weights);
+          if (Array.isArray(d.meds)) setMeds(d.meds);
+          if (Array.isArray(d.libreLogs)) setLibreLogs(d.libreLogs);
           if (d.themeMode) setThemeMode(d.themeMode);
         }
       } catch { /* אין נתונים שמורים עדיין */ }
+
       try {
         const a = await window.storage.get("ketome-auth");
-        if (a?.value) {
+        if (a?.value && !cancelled) {
           const parsed = JSON.parse(a.value);
           setAuth(parsed);
-          /* חשבון שהתחבר לפני שהוספנו מעקב hasEmail — בדיקה חד־פעמית מול השרת כדי לא להציג "אין אימייל" בטעות */
+          /* חשבון שהתחבר לפני שהוספנו מעקב hasEmail — בדיקה חד־פעמית מול השרת */
           if (SERVER_URL && parsed.hasEmail === undefined) {
             fetch(SERVER_URL.replace(/\/$/, "") + "/auth/me", {
               method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: parsed.token }),
             }).then((r) => r.json()).then((d) => {
-              if (d.ok) {
+              if (d.ok && !cancelled) {
                 const updated = { ...parsed, hasEmail: !!d.hasEmail };
                 setAuth(updated);
                 window.storage.set("ketome-auth", JSON.stringify(updated)).catch(() => {});
@@ -371,14 +411,21 @@ function KetoApp() {
           }
         }
       } catch { /* לא מחובר */ }
-      setLoaded(true);
+
+      if (!cancelled) setLoaded(true);
     })();
+
+    return () => { cancelled = true; };
   }, []);
 
   /* ─ שמירה אוטומטית מקומית על כל שינוי ─ */
   useEffect(() => {
-    if (!loaded) return;
-    const id = setTimeout(() => {
+    if (!loaded || logoutInProgressRef.current) return undefined;
+
+    if (localSaveTimerRef.current) clearTimeout(localSaveTimerRef.current);
+
+    localSaveTimerRef.current = setTimeout(() => {
+      if (logoutInProgressRef.current) return;
       window.storage
         .set("ketome-data", JSON.stringify({
           profile, carbLimit, calLimit, weights, measurements, meds, libreLogs, themeMode,
@@ -386,19 +433,35 @@ function KetoApp() {
         }))
         .catch(() => {});
     }, 500);
-    return () => clearTimeout(id);
+
+    return () => {
+      if (localSaveTimerRef.current) {
+        clearTimeout(localSaveTimerRef.current);
+        localSaveTimerRef.current = null;
+      }
+    };
   }, [loaded, profile, carbLimit, calLimit, weights, measurements, meals, meds, libreLogs, themeMode]);
 
-  /* ─ גיבוי אוטומטי לענן — אם מחוברים, כל שינוי מגובה ברקע (לא רק בלחיצה על הכפתור) ─ */
+  /* ─ גיבוי אוטומטי לענן — לא פועל בזמן התנתקות ─ */
   useEffect(() => {
-    if (!loaded || !auth || !SERVER_URL) return;
-    const id = setTimeout(() => {
+    if (!loaded || !auth || !SERVER_URL || logoutInProgressRef.current) return undefined;
+
+    if (cloudSaveTimerRef.current) clearTimeout(cloudSaveTimerRef.current);
+
+    cloudSaveTimerRef.current = setTimeout(() => {
+      if (logoutInProgressRef.current) return;
       fetch(SERVER_URL.replace(/\/$/, "") + "/data/save", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token: auth.token, data: appData() }),
-      }).catch(() => {}); // כשל שקט — הגיבוי הידני עדיין זמין כגיבוי
+      }).catch(() => {});
     }, 2000);
-    return () => clearTimeout(id);
+
+    return () => {
+      if (cloudSaveTimerRef.current) {
+        clearTimeout(cloudSaveTimerRef.current);
+        cloudSaveTimerRef.current = null;
+      }
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loaded, auth, profile, carbLimit, calLimit, weights, measurements, meals, meds, libreLogs]);
 
@@ -738,8 +801,105 @@ function KetoApp() {
     finally { setAuthBusy(false); }
   };
   const logout = async () => {
-    setAuth(null); setAuthMsg(null);
+    /* חסימה מיידית של כל שמירה אוטומטית לפני שינוי state כלשהו */
+    logoutInProgressRef.current = true;
+    setLoaded(false);
+
+    if (localSaveTimerRef.current) {
+      clearTimeout(localSaveTimerRef.current);
+      localSaveTimerRef.current = null;
+    }
+    if (cloudSaveTimerRef.current) {
+      clearTimeout(cloudSaveTimerRef.current);
+      cloudSaveTimerRef.current = null;
+    }
+
+    const emptyProfile = {
+      name: "", age: "30", height: "170", weight: "70",
+      gender: "m", activity: "light", style: "standard", medical: "none",
+    };
+    const emptyData = {
+      profile: emptyProfile, carbLimit: 50, calLimit: 2000,
+      weights: [], measurements: [], meals: [], meds: [], libreLogs: [],
+      themeMode: "light",
+    };
+
+    /* איפוס מיידי של כל הלשוניות והכותרת */
+    setAuth(null);
+    setAuthMsg(null);
+    setAuthBusy(false);
+    setAuthMode("login");
+    setAuthForm({ user: "", pass: "", email: "" });
+    setForgotEmail("");
+    setResetCode("");
+    setResetNewPass("");
+    setAttachEmailValue("");
+    setRemember(true);
+
+    setProfile(emptyProfile);
+    setCarbLimit(50);
+    setCalLimit(2000);
+    setThemeMode("light");
+
+    setWeights([]);
+    setWeightIn("");
+    setMeals([]);
+    setMeasurements([]);
+    setMeds([]);
+    setLibreLogs([]);
+
+    setTab("status");
+    setWeekAnchor(startOfWeek(new Date()));
+    setMealModalOpen(false);
+    setMealDate(todayKey);
+
+    setForm({ name: "", carbs: "", cal: "", protein: "", fat: "" });
+    setAdding(false);
+    setFormQty(1);
+    setLookupBusy(false);
+    setLookupErr(null);
+
+    setFoodOpen(false);
+    setFoodQuery("");
+    setSelectedFood(null);
+    setByUnit(true);
+    setQty(1);
+    setGramsIn("100");
+
+    setAnalyzing(false);
+    setPhotoStatus(null);
+    setPhotoResult(null);
+    setPhotoError(null);
+
+    setMForm({ ketones: "", glucose: "", uric: "", urine: "", systolic: "", diastolic: "", note: "" });
+    setMOpen(false);
+
+    setMedForm({ name: "", time: "" });
+    setMedOpen(false);
+
+    setLibreBusy(false);
+    setLibreResult(null);
+    setLibreError(null);
+
+    setInsight(null);
+    setInsightLoading(false);
+    setReportOpen(false);
+    setCopied(false);
+
+    /* הסמן נכתב ראשון. גם אם כתיבה ישנה תסתיים אחר כך, הטעינה הבאה תכפה מצב נקי. */
+    await window.storage.set("ketome-logout-reset", "1").catch(() => {});
     await window.storage.delete("ketome-auth").catch(() => {});
+    await window.storage.set("ketome-data", JSON.stringify(emptyData)).catch(() => {});
+
+    /* תמיכה גם בגרסאות ישנות שכתבו ישירות ל-localStorage */
+    try {
+      window.localStorage.removeItem("ketome-auth");
+      window.localStorage.setItem("ketome-logout-reset", "1");
+      window.localStorage.setItem("ketome-data", JSON.stringify(emptyData));
+    } catch { /* אחסון חסום */ }
+
+    /* רענון מלא לאחר שהמידע הריק נשמר. נתוני הענן נשארים בחשבון. */
+    window.location.reload();
   };
 
   const doForgotUsername = async () => {
@@ -1497,8 +1657,8 @@ function KetoApp() {
 
       {/* ═══ פופ-אפ הוספת ארוחה — נגיש מ"סטטוס", חוזרים אליו מעודכן בסגירה ═══ */}
       {mealModalOpen && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(22,22,19,0.5)", zIndex: 50, display: "flex", alignItems: "flex-end" }} onClick={() => setMealModalOpen(false)}>
-          <div onClick={(e) => e.stopPropagation()} style={{ background: T.paper, width: "100%", maxWidth: 480, margin: "0 auto", maxHeight: "88vh", overflowY: "auto", borderRadius: "18px 18px 0 0", padding: "18px 24px 28px" }}>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(22,22,19,0.5)", zIndex: 50, display: "flex", alignItems: "flex-end", justifyContent: "center", padding: "18px 0 72px" }} onClick={() => setMealModalOpen(false)}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: T.paper, width: "calc(100% - 24px)", maxWidth: 480, margin: "0 auto", maxHeight: "82vh", overflowY: "auto", borderRadius: 18, padding: "18px 24px 28px", boxShadow: "0 12px 40px rgba(0,0,0,0.25)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
               <div style={{ fontFamily: "'Frank Ruhl Libre', serif", fontSize: 19 }}>הוספת ארוחה</div>
               <button onClick={() => setMealModalOpen(false)} aria-label="סגירה"
