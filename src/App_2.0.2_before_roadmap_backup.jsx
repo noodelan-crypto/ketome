@@ -18,7 +18,7 @@ if (typeof window !== "undefined" && !window.storage) {
   };
 }
 
-/* ═══ KetoMe · v2.0.3 · Roadmap release ═══ */
+/* ═══ KetoMe · v2.0.2 · עיצוב מינימליסטי ═══ */
 const LIGHT_THEME = { paper: "#FBFBF9", ink: "#161613", muted: "#8B8A83", hair: "#E7E5DF", accent: "#0F6B5C", warn: "#B4552D", mid: "#C99A2E" };
 const DARK_THEME = { paper: "#17181B", ink: "#F2F1ED", muted: "#9A9A95", hair: "#2E2F33", accent: "#3ED9A0", warn: "#E5906B", mid: "#E3C767" };
 /* T הוא משתנה מודולרי הניתן לשינוי — מתעדכן בתחילת כל רינדור של KetoApp לפי ערכת הנושא הנבחרת,
@@ -186,65 +186,14 @@ const FOOD_DB = [
   { n: "שמן קוקוס", c: 0, k: 892, p: 0, f: 100, u: 14, un: "כף" },
   { n: "שמן MCT", a: ["MCT Oil"], c: 0, k: 850, p: 0, f: 100, u: 14, un: "כף" },
   { n: "קקאו טבעי ללא סוכר", a: ["אבקת קקאו"], c: 10, k: 228, p: 20, f: 14, u: 5, un: "כפית" },
-  { n: "אונטריב בקר", a: ["אנטריב", "ריב איי", "ribeye", "rib eye", "אנטריקוט", "בשר"], c: 0, k: 291, p: 24, f: 21, u: 250, un: "סטייק" },
-  { n: "שפונדרה / שורט ריבס", a: ["short ribs", "צלעות בקר", "אסאדו", "בשר"], c: 0, k: 310, p: 23, f: 25, u: 200, un: "מנה" },
-  { n: "לחי בקר", a: ["בשר ראש", "ראש בקר", "beef cheek"], c: 0, k: 230, p: 27, f: 13, u: 180, un: "מנה" },
-  { n: "זנב שור", a: ["oxtail", "זנב בקר"], c: 0, k: 262, p: 27, f: 17, u: 180, un: "מנה" },
-  { n: "לב בקר", a: ["איברים", "beef heart"], c: 0, k: 112, p: 17, f: 4, u: 150, un: "מנה" },
-  { n: "כליות בקר", a: ["איברים", "beef kidney"], c: 0.5, k: 99, p: 17, f: 3, u: 120, un: "מנה" },
-  { n: "מוח בקר", a: ["איברים", "beef brain"], c: 1, k: 196, p: 12, f: 15, u: 100, un: "מנה" },
-  { n: "עור עוף צלוי", a: ["שומן עוף", "chicken skin"], c: 0, k: 454, p: 20, f: 41, u: 30, un: "מנה" },
-  { n: "פצצת שומן קטוגנית (הערכה)", a: ["fat bomb", "קינוח קטוגני"], c: 4, k: 430, p: 6, f: 43, u: 35, un: "יחידה", estimated: true },
-  { n: "עוגת גבינה קטוגנית (הערכה)", a: ["keto cheesecake", "קינוח קטוגני"], c: 5, k: 330, p: 8, f: 31, u: 100, un: "פרוסה", estimated: true },
-  { n: "מוס שוקולד קטוגני (הערכה)", a: ["keto mousse", "קינוח קטוגני"], c: 5, k: 300, p: 5, f: 29, u: 100, un: "גביע", estimated: true },
-  { n: "בראוני קטוגני (הערכה)", a: ["keto brownie", "קינוח קטוגני"], c: 6, k: 360, p: 9, f: 34, u: 70, un: "יחידה", estimated: true },
-  { n: "עוגת ספל קטוגנית (הערכה)", a: ["keto mug cake", "קינוח קטוגני"], c: 6, k: 390, p: 12, f: 35, u: 120, un: "מנה", estimated: true },
-  { n: "פנקייק קטוגני (הערכה)", a: ["keto pancake"], c: 5, k: 260, p: 14, f: 21, u: 100, un: "מנה", estimated: true },
-  { n: "לחם קטוגני (הערכה)", a: ["keto bread"], c: 5, k: 280, p: 14, f: 23, u: 40, un: "פרוסה", estimated: true },
 ];
 
-/* חיפוש גמיש: עברית/אנגלית, מקפים, איות חלופי והתאמה חלקית */
-const normalizeFoodText = (value = "") => value
-  .toLocaleLowerCase("he-IL")
-  .replace(/[׳’']/g, "")
-  .replace(/[\-_/(),.]+/g, " ")
-  .replace(/\s+/g, " ")
-  .trim();
-
+/* חיפוש גמיש: כל מילות החיפוש חייבות להופיע בשם, בכל סדר */
 const searchFood = (q) => {
-  const normalized = normalizeFoodText(q);
-  const toks = normalized.split(" ").filter(Boolean);
+  const toks = q.trim().split(/\s+/).filter(Boolean);
   if (!toks.length) return FOOD_DB.slice(0, 8);
-  return FOOD_DB
-    .map((f, index) => {
-      const name = normalizeFoodText(f.n);
-      const aliases = normalizeFoodText((f.a || []).join(" "));
-      const hay = `${name} ${aliases}`;
-      const matched = toks.every((t) => hay.includes(t) || hay.split(" ").some((w) => w.startsWith(t)));
-      let score = matched ? 1 : -1;
-      if (name === normalized) score += 100;
-      else if (name.startsWith(normalized)) score += 50;
-      else if (aliases.includes(normalized)) score += 30;
-      return { f, score: score - index / 10000 };
-    })
-    .filter((x) => x.score >= 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 12)
-    .map((x) => x.f);
-};
-
-/* דירוג קטוגני כללי למנה — כלי עזר תזונתי, לא מדד רפואי ולא מדידת קטוזיס */
-const ketogenicRating = ({ carbs, protein, fat }) => {
-  const c = Number(carbs), p = Number(protein), f = Number(fat);
-  if (![c, p, f].every(Number.isFinite) || c < 0 || p < 0 || f < 0) return { level: "unknown", label: "לא ניתן לחשב", ratio: null, fatProtein: null };
-  const ratio = f / Math.max(p + c, 0.1);
-  const fatProtein = f / Math.max(p, 0.1);
-  let level = "low", label = "נמוך";
-  if (c <= 3 && (ratio >= 0.7 || f >= 10)) { level = "high"; label = "גבוה"; }
-  else if (c <= 8 && ratio >= 0.35) { level = "medium"; label = "בינוני"; }
-  else if (c <= 5 && p > 0) { level = "medium"; label = "בינוני"; }
-  if (c >= 15) { level = "low"; label = "נמוך"; }
-  return { level, label, ratio, fatProtein, carbs: c, protein: p, fat: f };
+  const hay = (f) => f.n + " " + (f.a || []).join(" ");
+  return FOOD_DB.filter((f) => toks.every((t) => hay(f).includes(t))).slice(0, 12);
 };
 
 const resizeImage = (file, maxDim = 1100, quality = 0.85) =>
@@ -354,7 +303,7 @@ function KetoApp() {
   const swipePointerIdRef = useRef(null);
 
   /* פרופיל */
-  const [profile, setProfile] = useState({ name: "", age: "30", height: "170", weight: "70", startWeight: "70", goalMode: "loss", gender: "m", activity: "light", style: "standard", medical: "none" });
+  const [profile, setProfile] = useState({ name: "", age: "30", height: "170", weight: "70", gender: "m", activity: "light", style: "standard", medical: "none" });
   const [carbLimit, setCarbLimit] = useState(50);
   const [calLimit, setCalLimit] = useState(2000);
   const [auth, setAuth] = useState(null); // {user, token}
@@ -421,9 +370,6 @@ function KetoApp() {
 
   const [reportOpen, setReportOpen] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [goalInfoOpen, setGoalInfoOpen] = useState(false);
-  const [ketoInfoOpen, setKetoInfoOpen] = useState(false);
-  const [goalCalc, setGoalCalc] = useState(null);
   const reportAutoCloseTimerRef = useRef(null);
 
   /* ─ טעינה אוטומטית מהאחסון המקומי בפתיחה (כולל "זכור אותי") ─ */
@@ -482,10 +428,7 @@ function KetoApp() {
         const r = await window.storage.get("ketome-data");
         if (r?.value && !cancelled) {
           const d = JSON.parse(r.value);
-          if (d.profile) {
-            const migratedWeight = String(d.profile.weight ?? "70");
-            setProfile({ ...defaultProfile(), ...d.profile, weight: migratedWeight, startWeight: String(d.profile.startWeight ?? migratedWeight), goalMode: d.profile.goalMode || "loss" });
-          }
+          if (d.profile) setProfile(d.profile);
           if (d.carbLimit != null) setCarbLimit(d.carbLimit);
           if (d.calLimit != null) setCalLimit(d.calLimit);
           if (Array.isArray(d.meals)) setMeals(d.meals);
@@ -683,13 +626,12 @@ function KetoApp() {
     const w = parseFloat(profile.weight), h = parseFloat(profile.height), a = parseFloat(profile.age);
     if (isNaN(w) || isNaN(h) || isNaN(a)) return;
     const bmr = 10 * w + 6.25 * h - 5 * a + (profile.gender === "m" ? 5 : -161);
-    const mult = { sit: 1.2, light: 1.375, mid: 1.55, high: 1.725, hard: 1.9 }[profile.activity] || 1.375;
-    const tdee = bmr * mult;
-    const factor = { loss: 0.85, maintain: 1, gain: 1.1 }[profile.goalMode || "loss"] || 0.85;
-    const cal = Math.round(tdee * factor / 10) * 10;
+    const mult = { sit: 1.2, light: 1.375, mid: 1.55, high: 1.725, hard: 1.9 }[profile.activity];
+    let cal = Math.round(bmr * mult / 10) * 10;
+    /* ברירת מחדל: ירידה מתונה */
+    cal = Math.round(cal * 0.85 / 10) * 10;
     let carbs = { liberal: 75, standard: 35, aggressive: 20 }[profile.style];
     if (profile.medical !== "none") carbs = Math.min(carbs, 20);
-    setGoalCalc({ bmr: Math.round(bmr), tdee: Math.round(tdee), factor, cal });
     setCalLimit(cal);
     setCarbLimit(carbs);
   };
@@ -732,8 +674,7 @@ function KetoApp() {
   }, [customFoods]);
 
   const searchAllFoods = (q) => {
-    const normalized = normalizeFoodText(q);
-    const toks = normalized.split(" ").filter(Boolean);
+    const toks = q.trim().split(/\s+/).filter(Boolean);
     const ranked = allFoods
       .map((f, index) => ({
         ...f,
@@ -742,8 +683,8 @@ function KetoApp() {
       }))
       .filter((f) => {
         if (!toks.length) return f.custom || f._uses > 0;
-        const hay = normalizeFoodText(`${f.n} ${(f.a || []).join(" ")}`);
-        return toks.every((t) => hay.includes(t) || hay.split(" ").some((w) => w.startsWith(t)));
+        const hay = `${f.n} ${(f.a || []).join(" ")}`;
+        return toks.every((t) => hay.includes(t));
       })
       .sort((a, b) => b._score - a._score);
 
@@ -986,7 +927,7 @@ function KetoApp() {
   const saveWeight = () => {
     const kg = parseFloat(weightIn); if (isNaN(kg)) return;
     setWeights([...weights, { ts: Date.now(), kg }]);
-    setProfile({ ...profile, weight: String(kg), startWeight: profile.startWeight || String(kg) });
+    setProfile({ ...profile, weight: String(kg) });
     setWeightIn("");
   };
 
@@ -1083,7 +1024,7 @@ function KetoApp() {
     });
 
   const defaultProfile = () => ({
-    name: "", age: "30", height: "170", weight: "70", startWeight: "70", goalMode: "loss",
+    name: "", age: "30", height: "170", weight: "70",
     gender: "m", activity: "light", style: "standard", medical: "none",
   });
 
@@ -1095,11 +1036,7 @@ function KetoApp() {
   });
 
   const normalizeCloudData = (d) => ({
-    profile: (() => {
-      const base = { ...defaultProfile(), ...(d?.profile || {}) };
-      const current = String(base.weight ?? "70");
-      return { ...base, weight: current, startWeight: String(base.startWeight ?? current), goalMode: base.goalMode || "loss" };
-    })(),
+    profile: d?.profile || defaultProfile(),
     carbLimit: d?.carbLimit != null ? d.carbLimit : 50,
     calLimit: d?.calLimit != null ? d.calLimit : 2000,
     weights: Array.isArray(d?.weights) ? d.weights : [],
@@ -1194,16 +1131,16 @@ function KetoApp() {
           setCloudStatus(`הטעינה מהענן נכשלה: ${cloudError.message}`);
         }
       } else {
-        /* בהרשמה שומרים את הנתונים שהמשתמש כבר הזין — לא מאפסים פרופיל, ארוחות או משקל. */
-        const existingSnapshot = normalizeCloudData(appData());
-        await persistLocalSnapshot(existingSnapshot);
+        const clean = normalizeCloudData({ profile: defaultProfile(), carbLimit: 50, calLimit: 2000, weights: [], measurements: [], meals: [], meds: [], libreLogs: [], customFoods: [], themeMode: "light", updatedAt: Date.now(), appVersion: APP_VERSION });
+        replaceDataFromCloud(clean);
+        await persistLocalSnapshot(clean);
         try {
-          await api("/data/save", { token: d.token, data: existingSnapshot });
-          setCloudStatus(`✓ הנתונים הקיימים נשמרו בענן · ${summarizeData(existingSnapshot)}`);
+          await api("/data/save", { token: d.token, data: clean });
+          setCloudStatus(`✓ נשמר בענן · ${summarizeData(clean)}`);
         } catch (cloudError) {
-          setCloudStatus(`החשבון נוצר והנתונים נשמרו במכשיר, אך הגיבוי הראשוני נכשל: ${cloudError.message}`);
+          setCloudStatus(`החשבון נוצר, אך הגיבוי הראשוני נכשל: ${cloudError.message}`);
         }
-        setAuthMsg("✓ נרשמת בהצלחה — הפרטים שמילאת נשמרו");
+        setAuthMsg("✓ נרשמת בהצלחה — חשבון חדש ונקי");
       }
 
       setAuthForm({ user: a.user, pass: "", email: "" });
@@ -1575,17 +1512,9 @@ function KetoApp() {
         @media (hover: hover) and (pointer: fine) {
           .navbtn { font-size: 14px !important; padding: 12px 2px 11px !important; }
         }
-        @media (max-width: 480px) {
-          .navbtn { font-size: 11.5px !important; padding: 8px 1px 7px !important; }
-          input { font-size: 14px !important; }
-          button { line-height: 1.15; }
-        }
-        @media (max-width: 390px) {
-          .navbtn { font-size: 10.8px !important; }
-        }
       `}</style>
 
-      <header className="app-header" style={{ padding: "calc(14px + env(safe-area-inset-top, 0px)) clamp(12px, 4vw, 24px) 0", maxWidth: 480, width: "100%", margin: "0 auto" }}>
+      <header className="app-header" style={{ padding: "calc(22px + env(safe-area-inset-top, 0px)) 24px 0", maxWidth: 480, width: "100%", margin: "0 auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
           <div style={{ fontFamily: "'Frank Ruhl Libre', serif", fontSize: 20, minWidth: 0 }}>KetoMe{profile.name.trim() ? ` · שלום, ${profile.name.trim()}` : ""}{pendingMeds.length > 0 && <span className="med-alert" style={{ fontSize: 12, fontFamily: "'Assistant', sans-serif", marginRight: 8 }}>● תרופה ממתינה</span>}{auth && <span style={{ fontSize: 12, color: T.accent, fontFamily: "'Assistant', sans-serif", marginRight: 8 }}>✓ {auth.user}</span>}{!auth && <button onClick={() => setTab("profile")} style={{ fontSize: 12, fontFamily: "'Assistant', sans-serif", marginRight: 8, background: "none", border: `1px solid ${T.hair}`, borderRadius: 999, padding: "3px 10px", color: T.muted, cursor: "pointer" }}>כניסה</button>}</div>
           <div style={{ textAlign: "left", flexShrink: 0 }}>
@@ -1615,7 +1544,7 @@ function KetoApp() {
       </nav>
       <div className="swipe-hint" style={{ textAlign: "center", fontSize: 9.5, color: T.muted, paddingTop: 2 }}>החליקו ימינה או שמאלה בין הלשוניות · מעבר מחזורי</div>
 
-      <main className="app-main" style={{ touchAction: "pan-y", flex: 1, maxWidth: 480, width: "100%", margin: "0 auto", padding: "0 clamp(12px, 4vw, 24px) calc(24px + env(safe-area-inset-bottom, 0px))" }}>
+      <main className="app-main" style={{ touchAction: "pan-y", flex: 1, maxWidth: 480, width: "100%", margin: "0 auto", padding: "0 24px calc(28px + env(safe-area-inset-bottom, 0px))" }}>
 
         {/* ═══ סטטוס ═══ */}
         {tab === "status" && (
@@ -1675,9 +1604,7 @@ function KetoApp() {
                     <div style={{ width: 36, height: 36, border: `1px solid ${T.hair}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: T.muted, flexShrink: 0 }}>רישום</div>}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.name}{m.keto === false && <span style={{ fontSize: 11, color: T.warn, marginRight: 6 }}>· לא קיטו</span>}</div>
-                    <div style={{ fontSize: 12, color: T.muted, fontVariantNumeric: "tabular-nums" }}>
-                      {timeOf(m.ts)} · דירוג קטוגני: <b style={{ color: ketogenicRating(m).level === "low" ? T.warn : ketogenicRating(m).level === "high" ? T.accent : T.ink }}>{ketogenicRating(m).label}</b>
-                    </div>
+                    <div style={{ fontSize: 12, color: T.muted, fontVariantNumeric: "tabular-nums" }}>{timeOf(m.ts)}</div>
                   </div>
                   <div style={{ textAlign: "left", flexShrink: 0 }}>
                     <div style={{ fontSize: 14, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{fmt(m.carbs)} <span style={{ fontWeight: 400, color: T.muted, fontSize: 12 }}>גר׳</span></div>
@@ -1980,14 +1907,7 @@ function KetoApp() {
         {/* ═══ פרטים ═══ */}
         {tab === "profile" && (
           <>
-            {!auth && (
-              <section style={{ paddingTop: 18, paddingBottom: 14, borderBottom: `1px solid ${T.hair}` }}>
-                <Label>שמירת הפרופיל וגיבוי בענן</Label>
-                <div style={{ fontSize: 13, color: T.muted, marginTop: 5 }}>אפשר למלא פרטים לפני ההרשמה. בעת יצירת החשבון הם יישמרו ולא יתאפסו.</div>
-                <button style={{ ...btnGhost, marginTop: 10, padding: "7px 16px", fontSize: 13 }} onClick={() => { setAuthMode("register"); document.getElementById("ketome-account")?.scrollIntoView({ behavior: "smooth" }); }}>הרשמה / התחברות</button>
-              </section>
-            )}
-            <section style={{ paddingTop: 18 }}>
+            <section style={{ paddingTop: 26 }}>
               <Label>תצוגה</Label>
               <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
                 <button style={pill(themeMode === "light")} onClick={() => setThemeMode("light")}>☀ בהיר</button>
@@ -2003,7 +1923,7 @@ function KetoApp() {
               </div>
               <div style={{ display: "flex", gap: 16 }}>
                 <input placeholder='גובה (ס"מ)' inputMode="decimal" value={profile.height} onChange={(e) => setProfile({ ...profile, height: e.target.value })} style={input()} />
-                <input placeholder='משקל בסיס (ק"ג)' inputMode="decimal" value={profile.startWeight || ""} onChange={(e) => setProfile({ ...profile, startWeight: e.target.value })} style={input()} />
+                <input placeholder='משקל (ק"ג)' inputMode="decimal" value={profile.weight} onChange={(e) => setProfile({ ...profile, weight: e.target.value })} style={input()} />
               </div>
               <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
                 <button style={pill(profile.gender === "m")} onClick={() => setProfile({ ...profile, gender: "m" })}>זכר</button>
@@ -2040,18 +1960,8 @@ function KetoApp() {
             </section>
 
             <section style={{ marginTop: 18 }}>
-              <Label>מטרת המשקל</Label>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
-                {[["loss", "ירידה במשקל"], ["maintain", "שמירה"], ["gain", "עלייה / מסת שריר"]].map(([v, l]) => (
-                  <button key={v} style={pill((profile.goalMode || "loss") === v)} onClick={() => setProfile({ ...profile, goalMode: v })}>{l}</button>
-                ))}
-              </div>
-            </section>
-
-            <section style={{ marginTop: 18 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}><Label>יעדים יומיים</Label><button aria-label="מידע על החישוב" onClick={() => setGoalInfoOpen(!goalInfoOpen)} style={{ border: `1px solid ${T.hair}`, background: "transparent", color: T.muted, borderRadius: 999, width: 24, height: 24, cursor: "pointer" }}>ⓘ</button></div>
+              <Label>יעדים יומיים</Label>
               <button style={{ ...btnGhost, marginTop: 10, padding: "8px 18px", fontSize: 13.5 }} onClick={calcGoals}>✨ חשב המלצות אוטומטית</button>
-              {goalInfoOpen && <div style={{ marginTop: 10, padding: 10, border: `1px solid ${T.hair}`, fontSize: 12.5, color: T.muted, lineHeight: 1.65 }}>ההמלצה משתמשת בנוסחת Mifflin–St Jeor לפי גיל, מין, גובה, משקל נוכחי ורמת פעילות. לירידה מוחלת הפחתה מתונה של 15%, לשמירה אין שינוי, ולעלייה תוספת של 10%. זו הערכה כללית ולא מדידה רפואית.{goalCalc && <div style={{ marginTop: 6, color: T.ink }}>BMR משוער: {goalCalc.bmr} · תחזוקה: {goalCalc.tdee} · יעד: {goalCalc.cal} קל׳</div>}</div>}
               <div style={{ display: "flex", gap: 16, marginTop: 8 }}>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 12.5, color: T.muted }}>יעד פחמימות (גר׳)</div>
@@ -2065,11 +1975,10 @@ function KetoApp() {
             </section>
 
             <section style={{ marginTop: 18 }}>
-              <Label>משקל נוכחי בהשוואה לבסיס</Label>
-              {(() => { const start = parseFloat(profile.startWeight); const current = parseFloat(profile.weight); const delta = Number.isFinite(start) && Number.isFinite(current) ? current - start : null; return delta == null ? null : <div style={{ marginTop: 7, fontSize: 13.5 }}><b>בסיס {fmt(start)} ק"ג</b> · נוכחי <b>{fmt(current)} ק"ג</b> · <span style={{ color: delta <= 0 ? T.accent : T.warn }}>{delta === 0 ? "ללא שינוי" : `${delta > 0 ? "+" : ""}${fmt(delta)} ק"ג (${fmt(delta / start * 100)}%)`}</span></div>; })()}
+              <Label>רישום משקל</Label>
               <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginTop: 6 }}>
-                <input placeholder='משקל נוכחי (ק"ג)' inputMode="decimal" value={weightIn} onChange={(e) => setWeightIn(e.target.value)} style={input({ maxWidth: 140 })} />
-                <button style={{ ...btn, padding: "8px 18px", fontSize: 13.5 }} onClick={saveWeight}>עדכן משקל נוכחי</button>
+                <input placeholder='משקל (ק"ג)' inputMode="decimal" value={weightIn} onChange={(e) => setWeightIn(e.target.value)} style={input({ maxWidth: 120 })} />
+                <button style={{ ...btn, padding: "8px 18px", fontSize: 13.5 }} onClick={saveWeight}>שמור משקל</button>
               </div>
               {weights.length > 0 && (
                 <div style={{ marginTop: 10 }}>
@@ -2082,8 +1991,8 @@ function KetoApp() {
               )}
             </section>
 
-            <section id="ketome-account" style={{ marginTop: 18 }}>
-              <Label>{auth ? "חשבון אישי" : "הרשמה והתחברות"}</Label>
+            <section style={{ marginTop: 18 }}>
+              <Label>חשבון אישי</Label>
               {!auth ? (
                 <div style={{ marginTop: 6 }}>
                   {authMode === "login" && (
@@ -2388,8 +2297,6 @@ function KetoApp() {
                           פחמימות לארוחה: <Big size={26} color={T.accent}>{fmt(f.c * r)}</Big> <span style={{ fontSize: 12, color: T.muted }}>גר׳</span>
                           <span style={{ fontSize: 12.5, color: T.muted, marginRight: 12 }}>{fmt(Math.round(f.k * r))} קל׳ · {fmt(f.p * r)} חלבון · {fmt(f.f * r)} שומן</span>
                         </div>
-                        {(() => { const kr = ketogenicRating({ carbs: f.c * r, protein: f.p * r, fat: f.f * r }); return <div style={{ marginTop: 8, fontSize: 12.5 }}>דירוג קטוגני: <b style={{ color: kr.level === "high" ? T.accent : kr.level === "low" ? T.warn : T.ink }}>{kr.label}</b> <button onClick={() => setKetoInfoOpen(!ketoInfoOpen)} style={{ background: "none", border: "none", color: T.muted, cursor: "pointer" }}>ⓘ</button>{ketoInfoOpen && <div style={{ marginTop: 6, color: T.muted, lineHeight: 1.6 }}>הדירוג מבוסס על פחמימות נטו, שומן, חלבון וגודל המנה. יחס שומן/(חלבון+פחמימות): {kr.ratio == null ? "—" : fmt(kr.ratio)}. זהו כלי עזר כללי ואינו מדד רפואי או מדידת קטוזיס.</div>}</div>; })()}
-                        {f.estimated && <div style={{ marginTop: 5, fontSize: 11.5, color: T.warn }}>ערכי מתכון משוערים — מומלץ להתאים לפי המרכיבים בפועל.</div>}
                         <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
                           <button style={{ ...btn, padding: "8px 20px" }} onClick={addFromDB}>+ הוסף לארוחה</button>
                           <button style={{ background: "none", border: "none", color: T.muted, fontSize: 14, cursor: "pointer" }} onClick={() => setSelectedFood(null)}>חזרה</button>
