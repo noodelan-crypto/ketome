@@ -10,14 +10,14 @@
     "test": "node tests/ketome-tests.mjs"
   },
   "dependencies": {
-    "@capacitor/android": "^8.4.1",
-    "@capacitor/core": "^8.4.1",
+    "@capacitor/android": "^8.4.2",
+    "@capacitor/core": "^8.4.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "recharts": "^2.12.7"
   },
   "devDependencies": {
-    "@capacitor/cli": "^8.4.1",
+    "@capacitor/cli": "^8.4.2",
     "@vitejs/plugin-react": "^4.3.1",
     "vite": "^5.4.0"
   }

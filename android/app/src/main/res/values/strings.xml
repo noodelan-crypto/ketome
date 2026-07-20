@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">KetoMe</string>
+    <string name="title_activity_main">KetoMe</string>
+    <string name="package_name">com.noodelan.ketome</string>
+    <string name="custom_url_scheme">com.noodelan.ketome</string>
+</resources>
