@@ -18,13 +18,13 @@ if (typeof window !== "undefined" && !window.storage) {
   };
 }
 
-/* ═══ KetoMe · v2.0.4 · Rev 14 · reversible smart serving/grams workflow ═══ */
+/* ═══ KetoMe · v2.0.5 · Rev 15 · keyboard-safe mobile food search ═══ */
 const LIGHT_THEME = { paper: "#FBFBF9", ink: "#161613", muted: "#8B8A83", hair: "#E7E5DF", accent: "#0F6B5C", warn: "#B4552D", mid: "#C99A2E" };
 const DARK_THEME = { paper: "#17181B", ink: "#F2F1ED", muted: "#9A9A95", hair: "#2E2F33", accent: "#3ED9A0", warn: "#E5906B", mid: "#E3C767" };
 /* T הוא משתנה מודולרי הניתן לשינוי — מתעדכן בתחילת כל רינדור של KetoApp לפי ערכת הנושא הנבחרת,
    כך שרכיבי עזר ברמת המודול (Ruler, Big, Label, Metric) תמיד רואים את הצבעים העדכניים */
 let T = LIGHT_THEME;
-const APP_VERSION = "2.0.4";
+const APP_VERSION = "2.0.5";
 
 /* כתובת השרת מוגדרת פעם אחת כאן ע"י המפתח (Cloudflare Worker) — לא ע"י המשתמש.
    כשריקה: הרשמה/סנכרון ענן מנוטרלים, וניתוח AI עובד ישירות (בסביבת התצוגה). */
@@ -499,6 +499,35 @@ function KetoApp() {
   const pendingAccountScrollRef = useRef(false);
   const foodSearchRef = useRef(null);
   const selectedFoodRef = useRef(null);
+  const mealModalRef = useRef(null);
+  const [visualViewportHeight, setVisualViewportHeight] = useState(() =>
+    typeof window !== "undefined" ? Math.round(window.visualViewport?.height || window.innerHeight || 760) : 760
+  );
+  const [mobileKeyboardOpen, setMobileKeyboardOpen] = useState(false);
+  const fullViewportHeightRef = useRef(
+    typeof window !== "undefined" ? Math.round(window.visualViewport?.height || window.innerHeight || 760) : 760
+  );
+
+  /* שומר את שדה החיפוש בתוך האזור הגלוי גם לאחר שמקלדת Android משנה את גובה ה-viewport. */
+  const keepFoodSearchVisible = (behavior = "smooth") => {
+    if (typeof window === "undefined") return;
+    const inputEl = foodSearchRef.current;
+    const modalEl = mealModalRef.current;
+    if (!inputEl || !modalEl) return;
+
+    const modalRect = modalEl.getBoundingClientRect();
+    const inputRect = inputEl.getBoundingClientRect();
+    const viewport = window.visualViewport;
+    const viewportBottom = viewport ? viewport.offsetTop + viewport.height : window.innerHeight;
+    const visibleBottom = Math.min(viewportBottom - 12, modalRect.bottom - 12);
+    const preferredTop = modalRect.top + 96;
+    const targetTop = Math.max(modalRect.top + 52, Math.min(preferredTop, visibleBottom - 54));
+
+    if (inputRect.top < targetTop || inputRect.bottom > visibleBottom) {
+      const nextTop = Math.max(0, modalEl.scrollTop + inputRect.top - targetTop);
+      modalEl.scrollTo({ top: nextTop, behavior });
+    }
+  };
 
   useEffect(() => {
     if (tab !== "profile" || !pendingAccountScrollRef.current) return;
@@ -511,12 +540,55 @@ function KetoApp() {
   }, [tab]);
 
   useEffect(() => {
-    if (!mealModalOpen || !foodOpen || selectedFood) return;
-    const timer = window.setTimeout(() => {
-      foodSearchRef.current?.focus();
-      foodSearchRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 180);
-    return () => window.clearTimeout(timer);
+    if (!mealModalOpen || !foodOpen || selectedFood) return undefined;
+
+    const focusAndReveal = (behavior) => {
+      const inputEl = foodSearchRef.current;
+      if (!inputEl) return;
+      try { inputEl.focus({ preventScroll: true }); } catch { inputEl.focus(); }
+      keepFoodSearchVisible(behavior);
+    };
+
+    /* Android פותח את המקלדת בכמה שלבים. בדיקות חוזרות משאירות את השדה גלוי
+       גם לפני ההקלדה הראשונה וגם לאחר שינוי גובה החלון. */
+    const timers = [120, 360, 720].map((delay, index) =>
+      window.setTimeout(() => focusAndReveal(index === 0 ? "smooth" : "auto"), delay)
+    );
+    return () => timers.forEach((timer) => window.clearTimeout(timer));
+  }, [mealModalOpen, foodOpen, selectedFood]);
+
+  useEffect(() => {
+    if (!mealModalOpen || typeof window === "undefined") {
+      if (typeof window !== "undefined") {
+        fullViewportHeightRef.current = Math.round(window.visualViewport?.height || window.innerHeight || 760);
+      }
+      setMobileKeyboardOpen(false);
+      return undefined;
+    }
+
+    const viewport = window.visualViewport;
+    const updateViewport = () => {
+      const height = Math.round(viewport?.height || window.innerHeight || 760);
+      const layoutHeight = Math.round(window.innerHeight || height);
+      const searchFocused = document.activeElement === foodSearchRef.current;
+      if (!searchFocused || height > fullViewportHeightRef.current) fullViewportHeightRef.current = height;
+      const baselineHeight = Math.max(fullViewportHeightRef.current, layoutHeight);
+      setVisualViewportHeight(height);
+      setMobileKeyboardOpen(searchFocused && baselineHeight - height > 90);
+      if (foodOpen && !selectedFood) {
+        window.requestAnimationFrame(() => keepFoodSearchVisible("auto"));
+      }
+    };
+
+    updateViewport();
+    viewport?.addEventListener("resize", updateViewport);
+    viewport?.addEventListener("scroll", updateViewport);
+    window.addEventListener("resize", updateViewport);
+    return () => {
+      viewport?.removeEventListener("resize", updateViewport);
+      viewport?.removeEventListener("scroll", updateViewport);
+      window.removeEventListener("resize", updateViewport);
+    };
   }, [mealModalOpen, foodOpen, selectedFood]);
 
   /* לאחר בחירה מהמאגר, מעלים את פרטי המזון לראש החלון כדי שלא תידרש גלילה מיותרת. */
@@ -1783,6 +1855,10 @@ function KetoApp() {
   const mealActionRow = { display: "grid", gridTemplateColumns: "minmax(0, 250px) 76px", alignItems: "center", gap: 8, marginTop: 8, width: "100%", maxWidth: 334, marginLeft: "auto" };
   const stepBtn = { width: 38, height: 38, border: `1px solid ${T.ink}`, background: "transparent", borderRadius: 999, fontSize: 18, cursor: "pointer", color: T.ink };
   const fileOverlay = { position: "absolute", inset: 0, width: "100%", height: "100%", opacity: 0, cursor: "pointer" };
+  const keyboardSafeModalHeight = `${Math.max(280, visualViewportHeight - 4)}px`;
+  const foodResultsMaxHeight = mobileKeyboardOpen
+    ? Math.max(112, Math.min(210, visualViewportHeight - 190))
+    : "min(34dvh, 280px)";
 
   return (
     <div className="app-shell" dir="rtl"
@@ -1829,7 +1905,7 @@ function KetoApp() {
           .meal-row > div:nth-of-type(2) > div:last-child,
           .meal-row > div:nth-of-type(3) > div:last-child { font-size: 10.5px !important; }
           .report-button { padding: 5px 0 !important; font-size: 11.5px !important; }
-          .meal-modal { width: calc(100% - 4px) !important; height: calc(100dvh - 2px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) !important; padding: 2px 10px 8px !important; border-radius: 10px !important; max-height: none !important; }
+          .meal-modal { width: calc(100% - 4px) !important; padding: 2px 10px 8px !important; border-radius: 10px !important; }
           .meal-modal section { margin-top: 7px !important; padding-top: 0 !important; }
           .meal-modal input { font-size: 13px !important; padding-block: 6px !important; }
           .meal-modal button, .meal-modal span { font-size: 12px; }
@@ -2522,7 +2598,7 @@ function KetoApp() {
       {/* ═══ פופ-אפ הוספת ארוחה — נגיש מ"סטטוס", חוזרים אליו מעודכן בסגירה ═══ */}
       {mealModalOpen && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(22,22,19,0.5)", zIndex: 50, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "calc(2px + env(safe-area-inset-top, 0px)) 0 calc(4px + env(safe-area-inset-bottom, 0px))" }} onClick={() => setMealModalOpen(false)}>
-          <div className="meal-modal" onClick={(e) => e.stopPropagation()} style={{ background: T.paper, width: "calc(100% - 16px)", maxWidth: 480, margin: "0 auto", height: "calc(100dvh - 6px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))", maxHeight: 760, overflowY: "auto", overscrollBehavior: "contain", borderRadius: 16, padding: "8px 18px 16px", boxShadow: "0 12px 40px rgba(0,0,0,0.25)" }}>
+          <div ref={mealModalRef} className="meal-modal" onClick={(e) => e.stopPropagation()} style={{ background: T.paper, width: "calc(100% - 16px)", maxWidth: 480, margin: "0 auto", height: mobileKeyboardOpen ? keyboardSafeModalHeight : "calc(100dvh - 6px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))", maxHeight: mobileKeyboardOpen ? keyboardSafeModalHeight : 760, overflowY: "auto", overscrollBehavior: "contain", scrollPaddingTop: 106, borderRadius: 16, padding: "8px 18px 16px", boxShadow: "0 12px 40px rgba(0,0,0,0.25)" }}>
             <div style={{ position: "sticky", top: -8, zIndex: 8, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, margin: "0 0 1px", padding: "5px 0 6px", background: T.paper, borderBottom: `1px solid ${T.hair}` }}>
               <div style={{ fontFamily: "'Frank Ruhl Libre', serif", fontSize: 18, whiteSpace: "nowrap" }}>הוספת ארוחה</div>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 7 }}>
@@ -2633,9 +2709,12 @@ function KetoApp() {
               {foodOpen && (
                 <div style={{ marginTop: 8 }}>
                   {!selectedFood && (
-                    <div style={{ position: "sticky", top: 48, zIndex: 4, background: T.paper, padding: "4px 0 8px" }}>
-                      <input ref={foodSearchRef} autoFocus enterKeyHint="search" placeholder="הקלדה מציגה מיד את רשימת המזונות…" value={foodQuery}
-                        onFocus={(e) => setTimeout(() => e.currentTarget.scrollIntoView({ block: "start", behavior: "smooth" }), 120)}
+                    <div className="food-search-panel" style={{ position: "sticky", top: 48, zIndex: 4, background: T.paper, padding: "4px 0 8px", scrollMarginTop: 106 }}>
+                      <input ref={foodSearchRef} autoFocus enterKeyHint="search" placeholder="חיפוש מזון…" value={foodQuery}
+                        onFocus={() => {
+                          window.setTimeout(() => keepFoodSearchVisible("smooth"), 80);
+                          window.setTimeout(() => keepFoodSearchVisible("auto"), 360);
+                        }}
                         onChange={(e) => { setFoodQuery(e.target.value); setSelectedFood(null); }}
                         style={input({ padding: "9px 0", fontSize: 15 })} />
                       <div style={{ fontSize: 11.5, color: T.muted, marginTop: 5 }}>{foodQuery.trim() ? `${searchAllFoods(foodQuery).length} תוצאות · מוצגים עד 8 פריטים בכל רגע, וניתן לגלול לכל היתר.` : `${searchAllFoods(foodQuery).length} מזונות · מוצגים עד 8 פריטים בכל רגע, וניתן לגלול בכל המאגר.`}</div>
@@ -2643,7 +2722,7 @@ function KetoApp() {
                     </div>
                   )}
                   {!selectedFood && searchAllFoods(foodQuery).length > 0 && (
-                    <div style={{ maxHeight: 432, overflowY: "auto", overscrollBehavior: "contain", WebkitOverflowScrolling: "touch", scrollbarGutter: "stable", borderTop: `1px solid ${T.hair}` }}>
+                    <div className="food-results-scroll" style={{ maxHeight: foodResultsMaxHeight, overflowY: "auto", overscrollBehavior: "contain", WebkitOverflowScrolling: "touch", scrollbarGutter: "stable", borderTop: `1px solid ${T.hair}` }}>
                       {searchAllFoods(foodQuery).map((f) => {
                         const sourceInfo = nutritionSourceInfo(f);
                         const qualityColor = sourceInfo.quality === "high" ? T.accent : sourceInfo.quality === "low" ? T.warn : sourceInfo.quality === "medium" ? T.mid : T.muted;
