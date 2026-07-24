@@ -18,13 +18,13 @@ if (typeof window !== "undefined" && !window.storage) {
   };
 }
 
-/* ═══ KetoMe · v2.0.5 · Rev 15 · keyboard-safe mobile food search ═══ */
+/* ═══ KetoMe · v2.0.6 · Rev 16 · latest-measurement display and clearer measurement entry ═══ */
 const LIGHT_THEME = { paper: "#FBFBF9", ink: "#161613", muted: "#8B8A83", hair: "#E7E5DF", accent: "#0F6B5C", warn: "#B4552D", mid: "#C99A2E" };
 const DARK_THEME = { paper: "#17181B", ink: "#F2F1ED", muted: "#9A9A95", hair: "#2E2F33", accent: "#3ED9A0", warn: "#E5906B", mid: "#E3C767" };
 /* T הוא משתנה מודולרי הניתן לשינוי — מתעדכן בתחילת כל רינדור של KetoApp לפי ערכת הנושא הנבחרת,
    כך שרכיבי עזר ברמת המודול (Ruler, Big, Label, Metric) תמיד רואים את הצבעים העדכניים */
 let T = LIGHT_THEME;
-const APP_VERSION = "2.0.5";
+const APP_VERSION = "2.0.6";
 
 /* כתובת השרת מוגדרת פעם אחת כאן ע"י המפתח (Cloudflare Worker) — לא ע"י המשתמש.
    כשריקה: הרשמה/סנכרון ענן מנוטרלים, וניתוח AI עובד ישירות (בסביבת התצוגה). */
@@ -789,13 +789,23 @@ function KetoApp() {
   const statusColor = over ? T.warn : T.accent;
   const calOver = totals.cal > calLimit;
 
-  const lastK = measurements.find((m) => m.ketones != null);
-  const lastG = measurements.find((m) => m.glucose != null);
-  const lastU = measurements.find((m) => m.uric != null);
-  const lastBP = measurements.find((m) => m.systolic != null && m.diastolic != null);
-  const gki = lastK && lastG ? lastG.glucose / 18 / lastK.ketones : null;
-  const gz = gkiZone(gki), kz = ketoneZone(lastK?.ketones), uz = uricZone(lastU?.uric);
-  const bpz = lastBP ? bpZone(lastBP.systolic, lastBP.diastolic) : null;
+  /* המסך העליון מציג רשומת מדידה אחת בלבד — הרשומה החדשה ביותר.
+     אין ערבוב בין גלוקוז חדש לבין קטונים/חומצה אורית/לחץ דם מרשומות קודמות. */
+  const latestMeasurement = useMemo(() => measurements.reduce((latest, measurement) => {
+    if (!latest || Number(measurement.ts) > Number(latest.ts)) return measurement;
+    return latest;
+  }, null), [measurements]);
+  const latestKetones = latestMeasurement?.ketones ?? null;
+  const latestGlucose = latestMeasurement?.glucose ?? null;
+  const latestUric = latestMeasurement?.uric ?? null;
+  const latestHasBP = latestMeasurement?.systolic != null && latestMeasurement?.diastolic != null;
+  const gki = latestKetones != null && latestGlucose != null && latestKetones > 0
+    ? latestGlucose / 18 / latestKetones
+    : null;
+  const gz = gkiZone(gki);
+  const kz = ketoneZone(latestKetones);
+  const uz = uricZone(latestUric);
+  const bpz = latestHasBP ? bpZone(latestMeasurement.systolic, latestMeasurement.diastolic) : null;
 
   const dailyCarbsMap = useMemo(() => {
     const m = {};
@@ -1302,6 +1312,16 @@ function KetoApp() {
     showMealAdded(f.n);
   };
 
+  const resetMeasurementForm = () => {
+    setMForm({ ketones: "", glucose: "", uric: "", urine: "", systolic: "", diastolic: "", note: "" });
+    setGlucoseUnit("auto");
+  };
+
+  const cancelMeasurement = () => {
+    resetMeasurementForm();
+    setMOpen(false);
+  };
+
   const addMeasurement = () => {
     const k = parseFloat(mForm.ketones), parsedGlucose = parseGlucoseInput(mForm.glucose, glucoseUnit), u = parseUric(mForm.uric);
     const sys = parseFloat(mForm.systolic), dia = parseFloat(mForm.diastolic);
@@ -1313,9 +1333,10 @@ function KetoApp() {
       systolic: hasBP ? sys : null, diastolic: hasBP ? dia : null,
       urine: mForm.urine || null, note: mForm.note.trim() || null,
     }, ...measurements]);
-    setMForm({ ketones: "", glucose: "", uric: "", urine: "", systolic: "", diastolic: "", note: "" });
-    setGlucoseUnit("auto");
+    resetMeasurementForm();
     setMOpen(false);
+    setToast("✓ המדידה נשמרה");
+    window.setTimeout(() => setToast(null), 1400);
   };
 
   const saveWeight = () => {
@@ -1847,6 +1868,15 @@ function KetoApp() {
     finally { setInsightLoading(false); }
   };
 
+  const canSaveMeasurement = (() => {
+    const k = parseFloat(mForm.ketones);
+    const g = parseGlucoseInput(mForm.glucose, glucoseUnit);
+    const u = parseUric(mForm.uric);
+    const sys = parseFloat(mForm.systolic);
+    const dia = parseFloat(mForm.diastolic);
+    return !isNaN(k) || g != null || u != null || (!isNaN(sys) && !isNaN(dia)) || !!mForm.urine;
+  })();
+
   const input = (extra) => ({ width: "100%", border: "none", borderBottom: `1px solid ${T.hair}`, background: "transparent", padding: "10px 0", fontSize: 16, fontFamily: "'Assistant', sans-serif", color: T.ink, outline: "none", ...extra });
   const pill = (active) => ({ border: `1px solid ${active ? T.ink : T.hair}`, background: active ? T.ink : "transparent", color: active ? T.paper : T.ink, borderRadius: 999, padding: "7px 14px", fontSize: 13, cursor: "pointer" });
   const btn = { background: T.ink, color: T.paper, border: "none", borderRadius: 999, padding: "10px 22px", fontSize: 14, fontWeight: 600, cursor: "pointer" };
@@ -2042,68 +2072,113 @@ function KetoApp() {
         {/* ═══ מדידות ═══ */}
         {tab === "measure" && (
           <>
-            <section style={{ paddingTop: 26 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px 16px" }}>
-                <div><Label>קטונים בדם</Label>
-                  <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginTop: 4 }}><Big color={kz ? kz.color : T.ink}>{fmt(lastK?.ketones)}</Big><span style={{ fontSize: 12, color: T.muted }}>mmol/L</span></div>
-                  {kz && <div style={{ fontSize: 12, color: kz.color, marginTop: 4 }}>{kz.label}</div>}
-                </div>
-                <div><Label>גלוקוז</Label>
-                  <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginTop: 4 }}><Big>{fmt(lastG?.glucose)}</Big><span style={{ fontSize: 12, color: T.muted }}>mg/dL</span></div>
-                  {lastG && <div style={{ fontSize: 12, color: T.muted, marginTop: 4 }}>= {fmt(lastG.glucose / 18)} mmol/L</div>}
-                </div>
-                <div><Label>חומצה אורית</Label>
-                  <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginTop: 4 }}><Big color={uz ? uz.color : T.ink}>{fmt(lastU?.uric)}</Big><span style={{ fontSize: 12, color: T.muted }}>mg/dL</span></div>
-                  {lastU && <div style={{ fontSize: 12, color: T.muted, marginTop: 4 }}>= {fmt(lastU.uric * URIC_FACTOR)} µmol/L</div>}
-                  <div style={{ fontSize: 11, color: uz ? uz.color : T.muted, marginTop: 2 }}>{uz ? `${uz.label} · ` : ""}נורמה 3.4–7 (200–420 µmol)</div>
-                </div>
-                <div><Label>GKI</Label>
-                  <div style={{ marginTop: 4 }}><Big color={gz ? gz.color : T.ink}>{fmt(gki)}</Big></div>
-                  {gz && <div style={{ fontSize: 12, color: gz.color, marginTop: 4 }}>{gz.label}</div>}
-                </div>
-                <div><Label>לחץ דם</Label>
-                  <div style={{ display: "flex", alignItems: "baseline", gap: 4, marginTop: 4 }}>
-                    <Big color={bpz ? bpz.color : T.ink}>{lastBP ? `${fmt(lastBP.systolic)}/${fmt(lastBP.diastolic)}` : "—"}</Big>
-                    <span style={{ fontSize: 12, color: T.muted }}>mmHg</span>
+            <section style={{ paddingTop: 18 }}>
+              <div style={{ border: `1px solid ${T.hair}`, borderRadius: 14, padding: "14px 14px 16px", background: themeMode === "dark" ? "rgba(255,255,255,0.025)" : "rgba(15,107,92,0.025)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, paddingBottom: latestMeasurement ? 11 : 0, borderBottom: latestMeasurement ? `1px solid ${T.hair}` : "none" }}>
+                  <div>
+                    <Label>תצוגת המדידה האחרונה</Label>
+                    {latestMeasurement && <div style={{ marginTop: 4, fontSize: 12, color: T.muted, fontVariantNumeric: "tabular-nums" }}>{dateOf(latestMeasurement.ts)} · {timeOf(latestMeasurement.ts)}</div>}
                   </div>
-                  {bpz && <div style={{ fontSize: 12, color: bpz.color, marginTop: 4 }}>{bpz.label}</div>}
+                  <span style={{ flexShrink: 0, border: `1px solid ${T.hair}`, borderRadius: 999, padding: "4px 9px", fontSize: 10.5, color: T.muted }}>לצפייה בלבד</span>
                 </div>
+
+                {!latestMeasurement ? (
+                  <div style={{ paddingTop: 13, fontSize: 13.5, color: T.muted, lineHeight: 1.65 }}>עדיין לא נשמרה מדידה. יש לפתוח את אזור „הזנת מדידה חדשה” שמתחת לכרטיס זה.</div>
+                ) : (
+                  <>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px 14px", marginTop: 14 }}>
+                      {latestKetones != null && (
+                        <div><Label>קטונים בדם</Label>
+                          <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginTop: 4 }}><Big color={kz ? kz.color : T.ink}>{fmt(latestKetones)}</Big><span style={{ fontSize: 12, color: T.muted }}>mmol/L</span></div>
+                          {kz && <div style={{ fontSize: 12, color: kz.color, marginTop: 4 }}>{kz.label}</div>}
+                        </div>
+                      )}
+                      {latestGlucose != null && (
+                        <div><Label>גלוקוז</Label>
+                          <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginTop: 4 }}><Big>{fmt(latestGlucose)}</Big><span style={{ fontSize: 12, color: T.muted }}>mg/dL</span></div>
+                          <div style={{ fontSize: 12, color: T.muted, marginTop: 4 }}>= {fmt(latestGlucose / 18)} mmol/L</div>
+                        </div>
+                      )}
+                      {latestUric != null && (
+                        <div><Label>חומצה אורית</Label>
+                          <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginTop: 4 }}><Big color={uz ? uz.color : T.ink}>{fmt(latestUric)}</Big><span style={{ fontSize: 12, color: T.muted }}>mg/dL</span></div>
+                          <div style={{ fontSize: 12, color: T.muted, marginTop: 4 }}>= {fmt(latestUric * URIC_FACTOR)} µmol/L</div>
+                          <div style={{ fontSize: 11, color: uz ? uz.color : T.muted, marginTop: 2 }}>{uz ? `${uz.label} · ` : ""}נורמה 3.4–7 (200–420 µmol)</div>
+                        </div>
+                      )}
+                      {gki != null && (
+                        <div><Label>GKI</Label>
+                          <div style={{ marginTop: 4 }}><Big color={gz ? gz.color : T.ink}>{fmt(gki)}</Big></div>
+                          {gz && <div style={{ fontSize: 12, color: gz.color, marginTop: 4 }}>{gz.label}</div>}
+                        </div>
+                      )}
+                      {latestHasBP && (
+                        <div><Label>לחץ דם</Label>
+                          <div style={{ display: "flex", alignItems: "baseline", gap: 4, marginTop: 4 }}>
+                            <Big color={bpz ? bpz.color : T.ink}>{`${fmt(latestMeasurement.systolic)}/${fmt(latestMeasurement.diastolic)}`}</Big>
+                            <span style={{ fontSize: 12, color: T.muted }}>mmHg</span>
+                          </div>
+                          {bpz && <div style={{ fontSize: 12, color: bpz.color, marginTop: 4 }}>{bpz.label}</div>}
+                        </div>
+                      )}
+                      {latestMeasurement.urine && <Metric label="סטיק שתן" value={latestMeasurement.urine} unit="" />}
+                    </div>
+                    {latestMeasurement.note && <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${T.hair}`, fontSize: 12.5, color: T.muted }}>{latestMeasurement.note}</div>}
+                  </>
+                )}
               </div>
             </section>
 
-            <section style={{ marginTop: 26 }}>
-              {!mOpen ? <button style={btnGhost} onClick={() => setMOpen(true)}>+ מדידה חדשה</button> : (
-                <div style={{ paddingBottom: 16, borderBottom: `1px solid ${T.hair}` }}>
-                  <div style={{ display: "flex", gap: 16 }}>
-                    <input placeholder="קטונים דם (mmol/L)" inputMode="decimal" value={mForm.ketones} onChange={(e) => setMForm({ ...mForm, ketones: e.target.value })} style={input()} />
-                    <input placeholder="גלוקוז — 90 או 5.0" inputMode="decimal" value={mForm.glucose} onChange={(e) => setMForm({ ...mForm, glucose: e.target.value })} style={input()} />
+            <section style={{ marginTop: 18 }}>
+              <div style={{ border: `1px solid ${mOpen ? T.accent : T.hair}`, borderRadius: 14, padding: mOpen ? "14px" : "12px 14px", background: mOpen ? (themeMode === "dark" ? "rgba(62,217,160,0.04)" : "rgba(15,107,92,0.04)") : "transparent" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+                  <div>
+                    <Label>הזנת מדידה חדשה</Label>
+                    <div style={{ marginTop: 4, fontSize: 12, color: T.muted }}>הערכים נרשמים באזור זה בלבד.</div>
                   </div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginTop: 8, alignItems: "center" }}>
-                    <span style={{ fontSize: 11.5, color: T.muted }}>יחידת גלוקוז:</span>
-                    {[['auto', 'זיהוי אוטומטי'], ['mgdl', 'mg/dL'], ['mmol', 'mmol/L']].map(([v, l]) => <button key={v} type="button" style={{ ...pill(glucoseUnit === v), padding: "5px 10px", fontSize: 11.5 }} onClick={() => setGlucoseUnit(v)}>{l}</button>)}
-                  </div>
-                  {parseGlucoseInput(mForm.glucose, glucoseUnit) && (() => { const pg = parseGlucoseInput(mForm.glucose, glucoseUnit); return <div style={{ marginTop: 7, fontSize: 12.5, color: T.accent, fontVariantNumeric: "tabular-nums" }}>יישמר: <b>{fmt(pg.mgdl)} mg/dL</b> = <b>{fmt(pg.mmol)} mmol/L</b>{glucoseUnit === "auto" && <span style={{ color: T.muted }}> · זוהה כ־{pg.unit === "mmol" ? "mmol/L" : "mg/dL"}</span>}</div>; })()}
-                  <input placeholder="חומצה אורית — mg/dL או µmol/L" inputMode="decimal" value={mForm.uric} onChange={(e) => setMForm({ ...mForm, uric: e.target.value })} style={input()} />
-                  {parseUric(mForm.uric) != null && parseFloat(mForm.uric) > 25 && <div style={{ fontSize: 12, color: T.muted, marginTop: 4 }}>זוהה כ־µmol/L → {fmt(parseUric(mForm.uric))} mg/dL</div>}
-                  <div style={{ display: "flex", gap: 16 }}>
-                    <input placeholder="לחץ דם סיסטולי" inputMode="numeric" value={mForm.systolic} onChange={(e) => setMForm({ ...mForm, systolic: e.target.value })} style={input()} />
-                    <input placeholder="לחץ דם דיאסטולי" inputMode="numeric" value={mForm.diastolic} onChange={(e) => setMForm({ ...mForm, diastolic: e.target.value })} style={input()} />
-                  </div>
-                  <div style={{ marginTop: 14 }}>
-                    <Label style={{ marginBottom: 8 }}>סטיק שתן (אופציונלי)</Label>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                      {URINE_LEVELS.map((u) => <button key={u} style={pill(mForm.urine === u)} onClick={() => setMForm({ ...mForm, urine: mForm.urine === u ? "" : u })}>{u}</button>)}
+                  {!mOpen && <button style={{ ...btnGhost, flexShrink: 0, padding: "7px 15px", fontSize: 13 }} onClick={() => setMOpen(true)}>+ פתיחת הטופס</button>}
+                </div>
+
+                {mOpen && (
+                  <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${T.hair}` }}>
+                    <div style={{ display: "flex", gap: 16 }}>
+                      <input autoFocus placeholder="קטונים דם (mmol/L)" inputMode="decimal" value={mForm.ketones} onChange={(e) => setMForm({ ...mForm, ketones: e.target.value })} style={input()} />
+                      <input placeholder="גלוקוז — 90 או 5.0" inputMode="decimal" value={mForm.glucose} onChange={(e) => setMForm({ ...mForm, glucose: e.target.value })} style={input()} />
+                    </div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginTop: 8, alignItems: "center" }}>
+                      <span style={{ fontSize: 11.5, color: T.muted }}>יחידת גלוקוז:</span>
+                      {[["auto", "זיהוי אוטומטי"], ["mgdl", "mg/dL"], ["mmol", "mmol/L"]].map(([v, l]) => <button key={v} type="button" style={{ ...pill(glucoseUnit === v), padding: "5px 10px", fontSize: 11.5 }} onClick={() => setGlucoseUnit(v)}>{l}</button>)}
+                    </div>
+                    {parseGlucoseInput(mForm.glucose, glucoseUnit) && (() => { const pg = parseGlucoseInput(mForm.glucose, glucoseUnit); return <div style={{ marginTop: 7, fontSize: 12.5, color: T.accent, fontVariantNumeric: "tabular-nums" }}>יישמר: <b>{fmt(pg.mgdl)} mg/dL</b> = <b>{fmt(pg.mmol)} mmol/L</b>{glucoseUnit === "auto" && <span style={{ color: T.muted }}> · זוהה כ־{pg.unit === "mmol" ? "mmol/L" : "mg/dL"}</span>}</div>; })()}
+                    <input placeholder="חומצה אורית — mg/dL או µmol/L" inputMode="decimal" value={mForm.uric} onChange={(e) => setMForm({ ...mForm, uric: e.target.value })} style={input()} />
+                    {parseUric(mForm.uric) != null && parseFloat(mForm.uric) > 25 && <div style={{ fontSize: 12, color: T.muted, marginTop: 4 }}>זוהה כ־µmol/L → {fmt(parseUric(mForm.uric))} mg/dL</div>}
+                    <div style={{ display: "flex", gap: 16 }}>
+                      <input placeholder="לחץ דם סיסטולי" inputMode="numeric" value={mForm.systolic} onChange={(e) => setMForm({ ...mForm, systolic: e.target.value })} style={input()} />
+                      <input placeholder="לחץ דם דיאסטולי" inputMode="numeric" value={mForm.diastolic} onChange={(e) => setMForm({ ...mForm, diastolic: e.target.value })} style={input()} />
+                    </div>
+                    <div style={{ marginTop: 14 }}>
+                      <Label style={{ marginBottom: 8 }}>סטיק שתן (אופציונלי)</Label>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                        {URINE_LEVELS.map((u) => <button key={u} type="button" style={pill(mForm.urine === u)} onClick={() => setMForm({ ...mForm, urine: mForm.urine === u ? "" : u })}>{u}</button>)}
+                      </div>
+                    </div>
+                    <input placeholder="הערה" value={mForm.note} onChange={(e) => setMForm({ ...mForm, note: e.target.value })} style={input({ marginTop: 6 })} />
+                    <div style={{ marginTop: 13, fontSize: 12.5, color: T.muted }}>בסיום יש לבחור <b style={{ color: T.ink }}>שמירה</b> או <b style={{ color: T.ink }}>ביטול</b>.</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 96px", gap: 10, marginTop: 10 }}>
+                      <button
+                        type="button"
+                        disabled={!canSaveMeasurement}
+                        style={{ ...btn, width: "100%", minHeight: 42, padding: "9px 16px", background: T.accent, color: themeMode === "dark" ? "#101311" : "#FFFFFF", fontWeight: 800, opacity: canSaveMeasurement ? 1 : 0.42, boxShadow: canSaveMeasurement ? "0 5px 14px rgba(15,107,92,.22)" : "none" }}
+                        onClick={addMeasurement}
+                      >
+                        ✓ שמירת המדידה
+                      </button>
+                      <button type="button" style={{ ...btnGhost, width: "100%", minWidth: 0, padding: "9px 10px", color: T.muted, borderColor: T.hair }} onClick={cancelMeasurement}>ביטול</button>
                     </div>
                   </div>
-                  <input placeholder="הערה" value={mForm.note} onChange={(e) => setMForm({ ...mForm, note: e.target.value })} style={input({ marginTop: 6 })} />
-                  <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
-                    <button style={{ ...btn, padding: "8px 20px" }} onClick={addMeasurement}>שמירה עכשיו</button>
-                    <button style={{ background: "none", border: "none", color: T.muted, fontSize: 14, cursor: "pointer" }} onClick={() => setMOpen(false)}>ביטול</button>
-                  </div>
-                </div>
-              )}
+                )}
+              </div>
             </section>
-
 
             <section style={{ marginTop: 22 }}>
               <Label>חיישן ליברה (סוכר רציף)</Label>
