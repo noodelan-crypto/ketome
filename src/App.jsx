@@ -18,13 +18,13 @@ if (typeof window !== "undefined" && !window.storage) {
   };
 }
 
-/* ═══ KetoMe · v2.0.6 · Rev 16 · latest-measurement display and clearer measurement entry ═══ */
+/* ═══ KetoMe · v2.0.7 · Rev 17 · mobile meal rows, shorter suggestions and persistent profile labels ═══ */
 const LIGHT_THEME = { paper: "#FBFBF9", ink: "#161613", muted: "#8B8A83", hair: "#E7E5DF", accent: "#0F6B5C", warn: "#B4552D", mid: "#C99A2E" };
 const DARK_THEME = { paper: "#17181B", ink: "#F2F1ED", muted: "#9A9A95", hair: "#2E2F33", accent: "#3ED9A0", warn: "#E5906B", mid: "#E3C767" };
 /* T הוא משתנה מודולרי הניתן לשינוי — מתעדכן בתחילת כל רינדור של KetoApp לפי ערכת הנושא הנבחרת,
    כך שרכיבי עזר ברמת המודול (Ruler, Big, Label, Metric) תמיד רואים את הצבעים העדכניים */
 let T = LIGHT_THEME;
-const APP_VERSION = "2.0.6";
+const APP_VERSION = "2.0.7";
 
 /* כתובת השרת מוגדרת פעם אחת כאן ע"י המפתח (Cloudflare Worker) — לא ע"י המשתמש.
    כשריקה: הרשמה/סנכרון ענן מנוטרלים, וניתוח AI עובד ישירות (בסביבת התצוגה). */
@@ -1889,6 +1889,8 @@ function KetoApp() {
   const foodResultsMaxHeight = mobileKeyboardOpen
     ? Math.max(112, Math.min(210, visualViewportHeight - 190))
     : "min(34dvh, 280px)";
+  const foodSearchResults = searchAllFoods(foodQuery);
+  const visibleFoodResults = foodQuery.trim() ? foodSearchResults.slice(0, 12) : foodSearchResults.slice(0, 8);
 
   return (
     <div className="app-shell" dir="rtl"
@@ -1929,11 +1931,13 @@ function KetoApp() {
           .status-section > div:nth-child(2) { margin-top: 2px !important; gap: 7px !important; }
           .status-section > div:nth-child(2) span:first-child { font-size: 40px !important; }
           .status-section > div:nth-child(2) > span:last-child { font-size: 13px !important; }
-          .meal-row { padding: 4px 0 !important; gap: 6px !important; }
-          .meal-row img, .meal-row > div:first-of-type { width: 28px !important; height: 28px !important; }
-          .meal-row > div:nth-of-type(2) > div:first-child { font-size: 12.5px !important; }
-          .meal-row > div:nth-of-type(2) > div:last-child,
-          .meal-row > div:nth-of-type(3) > div:last-child { font-size: 10.5px !important; }
+          .meal-row { padding: 7px 0 !important; gap: 7px !important; align-items: flex-start !important; min-height: 52px; }
+          .meal-thumb { width: 28px !important; height: 28px !important; margin-top: 1px; }
+          .meal-content { min-width: 0; }
+          .meal-name { font-size: 12.5px !important; line-height: 1.25 !important; }
+          .meal-meta { font-size: 10.5px !important; line-height: 1.45 !important; white-space: normal !important; overflow-wrap: anywhere; }
+          .meal-totals { padding-top: 0; line-height: 1.25; }
+          .meal-delete { margin-top: -2px; min-width: 22px; min-height: 30px; }
           .report-button { padding: 5px 0 !important; font-size: 11.5px !important; }
           .meal-modal { width: calc(100% - 4px) !important; padding: 2px 10px 8px !important; border-radius: 10px !important; }
           .meal-modal section { margin-top: 7px !important; padding-top: 0 !important; }
@@ -2048,21 +2052,21 @@ function KetoApp() {
               </div>
               {todayMeals.length === 0 && <div style={{ marginTop: 14, fontSize: 14, color: T.muted }}>עוד לא נרשמו ארוחות היום.</div>}
               {todayMeals.map((m) => (
-                <div className="meal-row" key={m.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${T.hair}` }}>
-                  {m.thumb ? <img src={m.thumb} alt="" style={{ width: 36, height: 36, objectFit: "cover", border: `1px solid ${T.hair}`, flexShrink: 0 }} /> :
-                    <div style={{ width: 36, height: 36, border: `1px solid ${T.hair}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: T.muted, flexShrink: 0 }}>רישום</div>}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.name}{m.keto === false && <span style={{ fontSize: 11, color: T.warn, marginRight: 6 }}>· לא קיטו</span>}</div>
-                    <div style={{ fontSize: 12, color: T.muted, fontVariantNumeric: "tabular-nums" }}>
+                <div className="meal-row" key={m.id} style={{ display: "flex", alignItems: "flex-start", gap: 10, minHeight: 58, padding: "9px 0", borderBottom: `1px solid ${T.hair}` }}>
+                  {m.thumb ? <img className="meal-thumb" src={m.thumb} alt="" style={{ width: 36, height: 36, objectFit: "cover", border: `1px solid ${T.hair}`, flexShrink: 0 }} /> :
+                    <div className="meal-thumb" style={{ width: 36, height: 36, border: `1px solid ${T.hair}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: T.muted, flexShrink: 0 }}>רישום</div>}
+                  <div className="meal-content" style={{ flex: 1, minWidth: 0 }}>
+                    <div className="meal-name" style={{ fontSize: 14, lineHeight: 1.3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.name}{m.keto === false && <span style={{ fontSize: 11, color: T.warn, marginRight: 6 }}>· לא קיטו</span>}</div>
+                    <div className="meal-meta" style={{ marginTop: 2, fontSize: 12, lineHeight: 1.45, color: T.muted, fontVariantNumeric: "tabular-nums", whiteSpace: "normal", overflowWrap: "anywhere" }}>
                       {timeOf(m.ts)} · דירוג קטוגני: <b style={{ color: ketogenicRating(m).level === "low" ? T.warn : ketogenicRating(m).level === "high" ? T.accent : T.ink }}>{ketogenicRating(m).label}</b>
                       {m.sourceType && <> · איכות נתונים: <b style={{ color: nutritionSourceInfo(m).quality === "high" ? T.accent : nutritionSourceInfo(m).quality === "low" ? T.warn : T.mid }}>{nutritionSourceInfo(m).qualityLabel}</b></>}
                     </div>
                   </div>
-                  <div style={{ textAlign: "left", flexShrink: 0 }}>
+                  <div className="meal-totals" style={{ textAlign: "left", flexShrink: 0 }}>
                     <div style={{ fontSize: 14, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{fmt(m.carbs)} <span style={{ fontWeight: 400, color: T.muted, fontSize: 12 }}>גר׳</span></div>
                     <div style={{ fontSize: 12, color: T.muted }}>{fmt(m.cal)} קל׳</div>
                   </div>
-                  <button onClick={() => setMeals(meals.filter((x) => x.id !== m.id))} style={{ background: "transparent", border: "none", color: T.muted, cursor: "pointer", fontSize: 16, padding: 0 }}>×</button>
+                  <button className="meal-delete" aria-label={`מחיקת ${m.name}`} onClick={() => setMeals(meals.filter((x) => x.id !== m.id))} style={{ background: "transparent", border: "none", color: T.muted, cursor: "pointer", fontSize: 18, lineHeight: 1, padding: "2px 3px", flexShrink: 0 }}>×</button>
                 </div>
               ))}
             </section>
@@ -2426,13 +2430,25 @@ function KetoApp() {
 
             <section style={{ paddingTop: 26 }}>
               <Label>חלק 1 · פרטים בסיסיים</Label>
-              <div style={{ display: "flex", gap: 16, marginTop: 6 }}>
-                <input placeholder="שם (אופציונלי)" value={profile.name} onChange={(e) => setProfile({ ...profile, name: e.target.value })} style={input()} />
-                <input placeholder="גיל" inputMode="numeric" value={profile.age} onChange={(e) => setProfile({ ...profile, age: e.target.value })} style={input({ maxWidth: 80 })} />
+              <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 92px", gap: 16, marginTop: 10 }}>
+                <label style={{ display: "block", minWidth: 0 }}>
+                  <span style={{ display: "block", fontSize: 12, color: T.muted, marginBottom: 2 }}>שם (אופציונלי)</span>
+                  <input aria-label="שם" value={profile.name} onChange={(e) => setProfile({ ...profile, name: e.target.value })} style={input()} />
+                </label>
+                <label style={{ display: "block", minWidth: 0 }}>
+                  <span style={{ display: "block", fontSize: 12, color: T.muted, marginBottom: 2 }}>גיל</span>
+                  <input aria-label="גיל" inputMode="numeric" value={profile.age} onChange={(e) => setProfile({ ...profile, age: e.target.value })} style={input()} />
+                </label>
               </div>
-              <div style={{ display: "flex", gap: 16 }}>
-                <input placeholder='גובה (ס"מ)' inputMode="decimal" value={profile.height} onChange={(e) => setProfile({ ...profile, height: e.target.value })} style={input()} />
-                <input placeholder='משקל בסיס (ק"ג)' inputMode="decimal" value={profile.startWeight || ""} onChange={(e) => setProfile({ ...profile, startWeight: e.target.value })} style={input()} />
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginTop: 10 }}>
+                <label style={{ display: "block", minWidth: 0 }}>
+                  <span style={{ display: "block", fontSize: 12, color: T.muted, marginBottom: 2 }}>גובה (ס״מ)</span>
+                  <input aria-label="גובה בסנטימטרים" inputMode="decimal" value={profile.height} onChange={(e) => setProfile({ ...profile, height: e.target.value })} style={input()} />
+                </label>
+                <label style={{ display: "block", minWidth: 0 }}>
+                  <span style={{ display: "block", fontSize: 12, color: T.muted, marginBottom: 2 }}>משקל בסיס (ק״ג)</span>
+                  <input aria-label="משקל בסיס בקילוגרמים" inputMode="decimal" value={profile.startWeight || ""} onChange={(e) => setProfile({ ...profile, startWeight: e.target.value })} style={input()} />
+                </label>
               </div>
               <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
                 <button style={pill(profile.gender === "m")} onClick={() => setProfile({ ...profile, gender: "m" })}>זכר</button>
@@ -2797,13 +2813,13 @@ function KetoApp() {
                         }}
                         onChange={(e) => { setFoodQuery(e.target.value); setSelectedFood(null); }}
                         style={input({ padding: "9px 0", fontSize: 15 })} />
-                      <div style={{ fontSize: 11.5, color: T.muted, marginTop: 5 }}>{foodQuery.trim() ? `${searchAllFoods(foodQuery).length} תוצאות · מוצגים עד 8 פריטים בכל רגע, וניתן לגלול לכל היתר.` : `${searchAllFoods(foodQuery).length} מזונות · מוצגים עד 8 פריטים בכל רגע, וניתן לגלול בכל המאגר.`}</div>
+                      <div style={{ fontSize: 11.5, color: T.muted, marginTop: 5 }}>{foodQuery.trim() ? `${foodSearchResults.length} תוצאות · מוצגות עד 12 התאמות.` : `מוצגות 8 הצעות. הקלידו כדי לחפש בכל המאגר.`}</div>
                       <div style={{ fontSize: 10.8, color: T.muted, marginTop: 3, lineHeight: 1.45 }}>איכות גבוהה מוצגת רק כאשר הערכים קשורים לתווית מוצר או למקור תזונתי מזוהה. ערך ממוצע כללי נשאר בכוונה באיכות בינונית.</div>
                     </div>
                   )}
-                  {!selectedFood && searchAllFoods(foodQuery).length > 0 && (
+                  {!selectedFood && visibleFoodResults.length > 0 && (
                     <div className="food-results-scroll" style={{ maxHeight: foodResultsMaxHeight, overflowY: "auto", overscrollBehavior: "contain", WebkitOverflowScrolling: "touch", scrollbarGutter: "stable", borderTop: `1px solid ${T.hair}` }}>
-                      {searchAllFoods(foodQuery).map((f) => {
+                      {visibleFoodResults.map((f) => {
                         const sourceInfo = nutritionSourceInfo(f);
                         const qualityColor = sourceInfo.quality === "high" ? T.accent : sourceInfo.quality === "low" ? T.warn : sourceInfo.quality === "medium" ? T.mid : T.muted;
                         return (
@@ -2832,7 +2848,7 @@ function KetoApp() {
                       })}
                     </div>
                   )}
-                  {!selectedFood && foodQuery.trim() && searchAllFoods(foodQuery).length === 0 && (
+                  {!selectedFood && foodQuery.trim() && foodSearchResults.length === 0 && (
                     <div style={{ padding: "8px 0 4px", marginTop: 2, borderTop: `1px solid ${T.hair}` }}>
                       <div style={{ fontSize: 13.5, color: T.muted }}>"{foodQuery}" לא נמצא במאגר המקומי.</div>
                       <button style={{ ...btnGhost, marginTop: 10, padding: "7px 16px", fontSize: 13 }}
