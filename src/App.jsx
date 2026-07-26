@@ -2662,7 +2662,12 @@ function KetoApp() {
                   <div style={{ marginTop: 6 }}>© 2026 All rights reserved</div>
                 </div>
                 <p style={{ margin: "12px 0 0", fontSize: 12.5, color: T.muted }}>
-                  האפליקציה אינה מכשיר רפואי ואינה תחליף לייעוץ רפואי מקצועי. ערכי AI הם הערכה בלבד.
+                  KetoMe היא כלי למעקב ולמידע כללי בלבד. אינה מכשיר רפואי, אינה מספקת אבחון או ייעוץ רפואי ואינה תחליף להתייעצות עם רופא. ערכי AI הם הערכה בלבד. יש להיוועץ באיש מקצוע רפואי לפני כל שינוי בתזונה, בתרופות או באורח החיים.
+                </p>
+                <p style={{ margin: "10px 0 0", fontSize: 12.5 }}>
+                  <a href="https://ketome-c477d.web.app/privacy.html" target="_blank" rel="noopener noreferrer" style={{ color: T.link || "#1a78c8" }}>
+                    מדיניות הפרטיות · Privacy Policy
+                  </a>
                 </p>
               </div>
             </section>
